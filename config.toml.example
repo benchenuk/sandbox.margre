@@ -1,0 +1,26 @@
+[llm]
+base_url = "http://localhost:1234/v1"
+api_key = ""
+model = "default"
+temperature = 0.7
+
+[neo4j]
+uri = "bolt://localhost:7687"
+username = "neo4j"
+password = "password"
+database = "neo4j"
+
+[search]
+provider = "ddgs"
+max_results = 10
+
+[search.searxng]
+base_url = "http://localhost:8080"
+
+[workflow]
+max_research_loops = 3
+max_agents_per_run = 5
+output_dir = "./runs"
+
+[logging]
+level = "INFO"
