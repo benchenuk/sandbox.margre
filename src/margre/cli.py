@@ -11,6 +11,7 @@ from margre.graph.connection import verify_connection, close_driver
 from margre.graph.schema import init_schema
 from margre.search import get_search_provider
 from margre.workflow.orchestrator import app as graph_app
+from margre.health import check_readiness
 
 import logging
 from rich.logging import RichHandler
@@ -68,6 +69,9 @@ def init():
 def chat(prompt: str):
     """Test standard LLM response using the wrapper."""
     setup_logging()
+    if not check_readiness(check_llm=True, check_db=False):
+        raise typer.Exit(1)
+        
     try:
         from margre.llm.client import create_completion
         
@@ -86,6 +90,10 @@ def chat(prompt: str):
 def search(query: str, limit: int = 5):
     """Test web search functionality."""
     setup_logging()
+    # For a full system readiness check, require both LLM and DB
+    if not check_readiness(check_llm=True, check_db=False):
+        raise typer.Exit(1)
+        
     console.print(f"[bold cyan]Search Query:[/bold cyan] {query}")
     try:
         provider = get_search_provider()
@@ -107,6 +115,9 @@ def search(query: str, limit: int = 5):
 def research(query: str, approve: bool = False, verbose: bool = False):
     """Execute the multi-agent research workflow."""
     setup_logging(level=logging.DEBUG if verbose else logging.INFO)
+    if not check_readiness(check_llm=True, check_db=True):
+        raise typer.Exit(1)
+         
     console.print(Panel(f"[bold cyan]Researching:[/bold cyan] {query}", border_style="blue"))
     
     # 1. State Initialisation
