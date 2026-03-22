@@ -9,6 +9,7 @@ from langgraph.constants import Send
 from margre.workflow.state import OrchestratorState, ResearcherState, SubTask
 from margre.workflow.planner import planner_node
 from margre.workflow.researcher import researcher_node
+from margre.workflow.aggregator import aggregator_node
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ def create_graph():
     # 1. Add Nodes
     workflow.add_node("planner_node", planner_node)
     workflow.add_node("researcher_node", researcher_node)
+    workflow.add_node("aggregator_node", aggregator_node)
     
     # 2. Add Edges
     workflow.add_edge(START, "planner_node")
@@ -108,9 +110,9 @@ def create_graph():
     )
     
     # researcher nodes collect their results automatically into agent_results
-    # then they flow into the final junction
-    # For Phase 3, we just transition to END after research is done
-    workflow.add_edge("researcher_node", END)
+    # then they flow into the aggregator junction
+    workflow.add_edge("researcher_node", "aggregator_node")
+    workflow.add_edge("aggregator_node", END)
     
     return workflow.compile()
 
