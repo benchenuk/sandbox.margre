@@ -20,9 +20,16 @@ class Neo4jConfig:
     database: str
 
 @dataclass
+class SearchConfig:
+    provider: str
+    max_results: int
+    searxng_url: str
+
+@dataclass
 class Config:
     llm: LLMConfig
     neo4j: Neo4jConfig
+    search: SearchConfig
 
 def load_config(path: str = "config.toml") -> Config:
     """Load configuration from TOML file, overriding secrets with env vars."""
@@ -49,7 +56,16 @@ def load_config(path: str = "config.toml") -> Config:
         database=neo4j_data.get("database", "neo4j"),
     )
     
-    return Config(llm=llm_config, neo4j=neo4j_config)
+    # Search config
+    search_data = data.get("search", {})
+    searxng_data = search_data.get("searxng", {})
+    search_config = SearchConfig(
+        provider=search_data.get("provider", "ddgs"),
+        max_results=search_data.get("max_results", 10),
+        searxng_url=searxng_data.get("base_url", "http://localhost:8080"),
+    )
+    
+    return Config(llm=llm_config, neo4j=neo4j_config, search=search_config)
 
 # Global configured instance (lazy-loaded or manually initialized if needed)
 _config: Config | None = None

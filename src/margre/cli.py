@@ -9,6 +9,7 @@ from rich.panel import Panel
 from margre.config import load_config
 from margre.graph.connection import verify_connection, close_driver
 from margre.graph.schema import init_schema
+from margre.search import get_search_provider
 
 app = typer.Typer(help="MARGRe — Multi-Agent Relation Graph Researcher")
 console = Console()
@@ -65,6 +66,26 @@ def chat(prompt: str):
         console.print(f"[bold red]LLM test failed: {e}[/bold red]")
     finally:
         close_driver()
+
+@app.command()
+def search(query: str, limit: int = 5):
+    """Test web search functionality."""
+    console.print(f"[bold cyan]Search Query:[/bold cyan] {query}")
+    try:
+        provider = get_search_provider()
+        with console.status(f"[blue]Searching using {provider.__class__.__name__}...[/blue]"):
+            results = provider.search(query, max_results=limit)
+            
+        if not results:
+            console.print("[yellow]No results found.[/yellow]")
+            return
+
+        for idx, r in enumerate(results, 1):
+            console.print(f"\n[bold green]{idx}. {r.title}[/bold green]")
+            console.print(f"   [dim]{r.url}[/dim]")
+            console.print(f"   {r.snippet[:200]}...")
+    except Exception as e:
+        console.print(f"[bold red]Search failed: {e}[/bold red]")
 
 if __name__ == "__main__":
     app()
