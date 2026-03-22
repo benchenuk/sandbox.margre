@@ -124,8 +124,6 @@ def researcher_node(state: ResearcherState) -> dict:
     logger.info(f"RESEARCHER [{agent_id}]: Persisted {entities_count} entities to Neo4j.")
 
     return {
-        "final_report": report,
-        "structured_data": extracted.model_dump(),
         "agent_results": [{
             "agent_id": agent_id,
             "entity_name": subtask.entity_name,
@@ -133,4 +131,3 @@ def researcher_node(state: ResearcherState) -> dict:
             "entities_count": entities_count
         }]
     }
-

@@ -41,10 +41,30 @@ RESEARCHER_EXTRACTION_SYSTEM_PROMPT = (
 )
 
 #
-# Aggregator Node Prompts (Phase 4 anticipation)
+# Aggregator Node Prompts
 #
 AGGREGATOR_SYSTEM_PROMPT = (
     "You are the Lead Researcher. You have received several detailed reports from specialised sub-agents. "
-    "Your task is to synthesize these into a single, cohesive master report on the main topic: '{topic}'. "
-    "Resolve any contradictions between reports and structure the final Markdown for maximum clarity and insight."
+    "Your objective is to: "
+    "1. Synthesize these into a cohesive master report on the topic '{topic}'. "
+    "2. Identify 2-3 specific 'gaps' or missing links in the research that would strengthen the final report. "
+    "Focus on missing relations between entities or specific historical context not covered by search results."
+)
+
+AGGREGATOR_EXTRACTION_PROMPT = (
+    "Carefully analyze the master report and provide: "
+    "1. The final narrative summary in Markdown. "
+    "2. A list of 2-3 suggested_gaps or follow-up entities that require further research. "
+    "Only return the structured JSON data as requested."
+)
+
+#
+# Planner Node Refinement Prompt
+#
+PLANNER_REFINEMENT_TEMPLATE = (
+    "You are refining an existing research plan. "
+    "Topic: {topic}\n"
+    "Previous Findings: {master_summary}\n"
+    "Suggested Gaps to Fill: {gaps}\n\n"
+    "Decompose the user's research query into parallel subtasks, focusing on the unresolved gaps."
 )

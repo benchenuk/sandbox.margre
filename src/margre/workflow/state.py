@@ -30,12 +30,15 @@ class OrchestratorState(TypedDict):
     plan: Optional[ResearchPlan]
     
     # Track results from sub-agents
-    # Format: {"agent_id": {"summary": str, "saved_run_file": str, "entities_written": int}}
     agent_results: Annotated[List[Dict[str, Any]], operator.add]
     
-    # State tracking
-    current_loop: int
+    # State tracking and refinement
+    loop_count: int
     user_approved_plan: bool
+    
+    # Master results
+    master_report: Optional[str]
+    suggested_gaps: List[str] # Overwrites on each iteration
 
 #
 # Sub-Agent State

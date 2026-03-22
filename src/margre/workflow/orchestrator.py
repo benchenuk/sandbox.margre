@@ -68,6 +68,28 @@ def route_after_planner(state: OrchestratorState) -> Literal["researcher_dispatc
     return "planner"
 
 #
+# Routing logic for Refinement
+#
+def route_after_aggregation(state: OrchestratorState) -> Literal["refine", "end"]:
+    """
+    Decides whether to loop back for refinement or end the workflow.
+    This is intended to be a HITL point or an automated heuristic.
+    For Phase 5, if 'suggested_gaps' exist and we haven't hit loop limit, check HITL.
+    """
+    from margre.config import get_config
+    config = get_config()
+    
+    # Check loop limit
+    if state.get("loop_count", 0) >= config.workflow.max_research_loops:
+        logger.info(f"ORCHESTRATOR: Loop limit ({config.workflow.max_research_loops}) reached. Ending.")
+        return "end"
+    
+    # In a full HITL system, we would interrupt here to show the report and ask the user.
+    # For and automated POC or until we add the CLI interrupt, we can terminate or auto-refine.
+    # We will favor terminating unless the user explicitly requested a resume/refine in the future.
+    return "end"
+
+#
 # Define the Graph
 #
 def create_graph():
@@ -79,10 +101,15 @@ def create_graph():
     workflow.add_node("researcher_node", researcher_node)
     workflow.add_node("aggregator_node", aggregator_node)
     
+    # Jump node for Send logic
+    def research_dispatch_node(state: OrchestratorState) -> dict:
+        return {}
+    workflow.add_node("research_dispatch_node", research_dispatch_node)
+    
     # 2. Add Edges
     workflow.add_edge(START, "planner_node")
     
-    # Conditional edge from planner to research (parallel dispatch)
+    # Planner -> HITL Approval -> Dispatch
     workflow.add_conditional_edges(
         "planner_node",
         route_after_planner,
@@ -92,25 +119,25 @@ def create_graph():
         }
     )
     
-    # Dynamic send-based node for parallel research
-    # We use a dummy jump node to hold the conditional logic for 'Send'
-    def research_dispatch_node(state: OrchestratorState) -> dict:
-        # This is a no-op logic node that triggers the Send conditional edge
-        return {}
-    
-    workflow.add_node("research_dispatch_node", research_dispatch_node)
-    
-    # The actual dispatch magic
+    # Dispatch -> Send researchers
     workflow.add_conditional_edges(
         "research_dispatch_node",
         continue_to_researchers,
         ["researcher_node"]
     )
     
-    # researcher nodes collect their results automatically into agent_results
-    # then they flow into the aggregator junction
+    # Researcher results flow into aggregator
     workflow.add_edge("researcher_node", "aggregator_node")
-    workflow.add_edge("aggregator_node", END)
+    
+    # Aggregator -> Refinement Loop check
+    workflow.add_conditional_edges(
+        "aggregator_node",
+        route_after_aggregation,
+        {
+            "refine": "planner_node",
+            "end": END
+        }
+    )
     
     return workflow.compile()
 
