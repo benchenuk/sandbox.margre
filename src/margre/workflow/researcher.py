@@ -44,18 +44,23 @@ def researcher_node(state: ResearcherState) -> dict:
     agent_id = state["agent_id"]
     run_id = state["run_id"]
     
-    logger.info(f"[{agent_id}] Starting research on: {subtask.entity_name} ({subtask.entity_type})")
+    logger.info(f"RESEARCHER [{agent_id}]: Starting subtask: {subtask.entity_name} ({subtask.entity_type})")
     
     # 1. Search
     provider = get_search_provider()
+    logger.info(f"RESEARCHER [{agent_id}]: Executing web search for: '{subtask.research_query}'")
     search_results = provider.search(subtask.research_query, max_results=5)
     
     if not search_results:
-        logger.warning(f"[{agent_id}] No search results found.")
+        logger.warning(f"RESEARCHER [{agent_id}]: No search results found for query: '{subtask.research_query}'")
         return {
             "final_report": f"No information found for {subtask.entity_name}.",
             "structured_data": {}
         }
+
+    logger.info(f"RESEARCHER [{agent_id}]: Found {len(search_results)} search results.")
+    for idx, r in enumerate(search_results):
+        logger.debug(f"RESEARCHER [{agent_id}]: Result {idx+1}: {r.title} ({r.url})")
 
     # 2. Synthesis (Markdown Report)
     model = get_model()
@@ -71,11 +76,14 @@ def researcher_node(state: ResearcherState) -> dict:
         ))
     ]
     
-    report: str = model.invoke(synthesis_prompt).content
+    logger.debug(f"RESEARCHER [{agent_id}]: Sending synthesis prompt to LLM.")
+    report_res = model.invoke(synthesis_prompt)
+    report = report_res.content
+    logger.info(f"RESEARCHER [{agent_id}]: Synthesis complete. Report length: {len(report)} characters.")
     
     # 3. Save to Filesystem (Markdown)
     report_path = save_research_note(run_id, agent_id, report)
-    logger.info(f"[{agent_id}] Saved Markdown report to: {report_path}")
+    logger.info(f"RESEARCHER [{agent_id}]: Saved Markdown report to: {report_path}")
 
     # 4. Structured Extraction
     extraction_prompt = [
@@ -83,11 +91,13 @@ def researcher_node(state: ResearcherState) -> dict:
         HumanMessage(content=f"Research Report:\n{report}")
     ]
     
+    logger.info(f"RESEARCHER [{agent_id}]: Extracting structured entities from report.")
     structured_model = model.with_structured_output(schema=StructuredResearchSummary)
     extracted: StructuredResearchSummary = structured_model.invoke(extraction_prompt)
     
     # 5. Save to Persistance (Neo4j + JSON)
-    save_agent_structured_result(run_id, agent_id, extracted.model_dump())
+    json_path = save_agent_structured_result(run_id, agent_id, extracted.model_dump())
+    logger.debug(f"RESEARCHER [{agent_id}]: Saved structured JSON to: {json_path}")
     
     entities_count = 0
     # Save the source nodes first
@@ -100,23 +110,19 @@ def researcher_node(state: ResearcherState) -> dict:
         name = ent.get("name", "")
         props = ent.get("properties", {}) or {}
         
-        # Ensure name exists
         if not name:
             continue
             
-        # Clean up props for Neo4j (must be dict)
         if hasattr(props, "model_dump"):
             props = props.model_dump()
         
         if save_entity(label, {"name": name, **props}):
             entities_count += 1
-            # Link to the first source as a primary evidence (simplified)
             if search_results:
                 link_entity_to_source(name, label, search_results[0].url)
 
-    logger.info(f"[{agent_id}] Successfully persisted {entities_count} entities to Neo4j.")
+    logger.info(f"RESEARCHER [{agent_id}]: Persisted {entities_count} entities to Neo4j.")
 
-    # Return summary for aggregator
     return {
         "final_report": report,
         "structured_data": extracted.model_dump(),
@@ -127,3 +133,4 @@ def researcher_node(state: ResearcherState) -> dict:
             "entities_count": entities_count
         }]
     }
+

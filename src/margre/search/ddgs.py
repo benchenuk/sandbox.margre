@@ -4,11 +4,16 @@ from typing import List
 from ddgs import DDGS
 from margre.search.base import SearchResult, SearchProvider
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class DDGSSearchProvider(SearchProvider):
     """Search provider using the DuckDuckGo Search (DDGS) library."""
     
     def search(self, query: str, max_results: int = 10) -> List[SearchResult]:
         """Perform search using DuckDuckGo."""
+        logger.info(f"SEARCH [DDGS]: Executing search for: '{query}'")
         results = []
         try:
             with DDGS() as ddgs:
@@ -20,9 +25,10 @@ class DDGSSearchProvider(SearchProvider):
                         snippet=r.get("body", ""),
                         source="DDGS"
                     ))
+            logger.info(f"SEARCH [DDGS]: Found {len(results)} results.")
+            for idx, res in enumerate(results):
+                logger.debug(f"SEARCH [DDGS]: Result {idx+1}: {res.title} ({res.url})")
         except Exception as e:
-            # Re-raise or handle as appropriate for MARGRe's error boundary
-            import logging
-            logging.error(f"DDGS search failed: {e}")
+            logger.error(f"SEARCH [DDGS]: Search failed: {e}")
             
         return results

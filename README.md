@@ -51,9 +51,9 @@ uv run margre init           # Create config.toml and apply graph constraints
 Edit `config.toml` to point to your LLM provider. Then run:
 
 #### Full Research Run
-The main entry point. It creates a plan, asks for your approval, and then spawns agents in parallel.
+The main entry point. It creates a plan, asks for your approval, and then spawns agents in parallel. Use `--verbose` to see detailed agent logs.
 ```bash
-uv run margre research "The Medicis of Florence and the Italian Renaissance"
+uv run margre research "The Medicis of Florence and the Italian Renaissance" --verbose
 ```
 
 #### Individual Utilities

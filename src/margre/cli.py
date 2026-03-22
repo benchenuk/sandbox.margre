@@ -12,12 +12,25 @@ from margre.graph.schema import init_schema
 from margre.search import get_search_provider
 from margre.workflow.orchestrator import app as graph_app
 
+import logging
+from rich.logging import RichHandler
+
+def setup_logging(level=logging.INFO):
+    """Configure structured logging for MARGRe."""
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True, console=Console(stderr=True))]
+    )
+
 app = typer.Typer(help="MARGRe — Multi-Agent Relation Graph Researcher")
 console = Console()
 
 @app.command()
 def init():
     """Initialize the application configuration, checking Neo4j connection."""
+    setup_logging()
     console.print("[bold green]Initializing MARGRe...[/bold green]")
     
     if not os.path.exists("config.toml"):
@@ -54,6 +67,7 @@ def init():
 @app.command()
 def chat(prompt: str):
     """Test standard LLM response using the wrapper."""
+    setup_logging()
     try:
         from margre.llm.client import create_completion
         
@@ -71,6 +85,7 @@ def chat(prompt: str):
 @app.command()
 def search(query: str, limit: int = 5):
     """Test web search functionality."""
+    setup_logging()
     console.print(f"[bold cyan]Search Query:[/bold cyan] {query}")
     try:
         provider = get_search_provider()
@@ -89,8 +104,9 @@ def search(query: str, limit: int = 5):
         console.print(f"[bold red]Search failed: {e}[/bold red]")
 
 @app.command()
-def research(query: str, approve: bool = False):
+def research(query: str, approve: bool = False, verbose: bool = False):
     """Execute the multi-agent research workflow."""
+    setup_logging(level=logging.DEBUG if verbose else logging.INFO)
     console.print(Panel(f"[bold cyan]Researching:[/bold cyan] {query}", border_style="blue"))
     
     # 1. State Initialisation

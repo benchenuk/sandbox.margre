@@ -11,6 +11,7 @@ def save_source(url: str, title: str, snippet: str, file_path: str = "") -> bool
     Save or update a Source node in Neo4j.
     Returns True if successful, False otherwise.
     """
+    logger.info(f"GRAPH: Saving Source node: {url}")
     query = """
     MERGE (s:Source {url: $url})
     ON CREATE SET s.title = $title,
@@ -27,10 +28,14 @@ def save_source(url: str, title: str, snippet: str, file_path: str = "") -> bool
     driver = get_driver()
     try:
         with driver.session() as session:
+            logger.debug(f"GRAPH: Executing Cypher:\n{query}\nParams: url={url}, title={title}")
             result = session.run(query, url=url, title=title, snippet=snippet, file_path=file_path)
-            return bool(list(result))
+            success = bool(list(result))
+            if success:
+                logger.info(f"GRAPH: Successfully saved Source node: {url}")
+            return success
     except Exception as e:
-        logger.error(f"Failed to save Source node: {e}")
+        logger.error(f"GRAPH: Failed to save Source node: {e}")
         return False
 
 def save_entity(label: str, properties: Dict[str, Any]) -> bool:
@@ -39,12 +44,19 @@ def save_entity(label: str, properties: Dict[str, Any]) -> bool:
     Uses MERGE on the 'name' property.
     """
     if label not in ["Person", "Event", "Organisation"]:
-        logger.error(f"Unsupported entity label: {label}")
+        logger.error(f"GRAPH: Unsupported entity label: {label}")
         return False
         
+    name = properties.get("name")
+    if not name:
+        logger.error(f"GRAPH: Entity properties missing 'name': {properties}")
+        return False
+        
+    logger.info(f"GRAPH: Saving {label} node: {name}")
+    
     # Build dynamic SET clause for properties
     set_clauses = []
-    params = {"name": properties["name"]}
+    params = {"name": name}
     for key, value in properties.items():
         if key == "name":
             continue
@@ -62,14 +74,19 @@ def save_entity(label: str, properties: Dict[str, Any]) -> bool:
     driver = get_driver()
     try:
         with driver.session() as session:
+            logger.debug(f"GRAPH: Executing Cypher:\n{query}\nParams: {params}")
             result = session.run(query, **params)
-            return bool(list(result))
+            success = bool(list(result))
+            if success:
+                logger.info(f"GRAPH: Successfully saved {label} node: {name}")
+            return success
     except Exception as e:
-        logger.error(f"Failed to save {label} node: {e}")
+        logger.error(f"GRAPH: Failed to save {label} node: {e}")
         return False
 
 def link_entity_to_source(entity_name: str, entity_label: str, source_url: str) -> bool:
     """Create a SOURCED_FROM relationship between an entity and a source."""
+    logger.info(f"GRAPH: Linking {entity_label} '{entity_name}' to Source: {source_url}")
     query = f"""
     MATCH (e:{entity_label} {{name: $entity_name}})
     MATCH (s:Source {{url: $source_url}})
@@ -79,14 +96,19 @@ def link_entity_to_source(entity_name: str, entity_label: str, source_url: str) 
     driver = get_driver()
     try:
         with driver.session() as session:
+            logger.debug(f"GRAPH: Executing Cypher:\n{query}\nParams: entity_name={entity_name}, source_url={source_url}")
             result = session.run(query, entity_name=entity_name, source_url=source_url)
-            return bool(list(result))
+            success = bool(list(result))
+            if success:
+                logger.info(f"GRAPH: Successfully linked {entity_name} to {source_url}")
+            return success
     except Exception as e:
-        logger.error(f"Failed to link entity to source: {e}")
+        logger.error(f"GRAPH: Failed to link entity to source: {e}")
         return False
 
 def get_source_by_url(url: str) -> Dict[str, Any] | None:
     """Retrieve a Source node by its URL."""
+    logger.info(f"GRAPH: Fetching Source node by URL: {url}")
     query = """
     MATCH (s:Source {url: $url})
     RETURN s
@@ -95,11 +117,14 @@ def get_source_by_url(url: str) -> Dict[str, Any] | None:
     driver = get_driver()
     try:
         with driver.session() as session:
+            logger.debug(f"GRAPH: Executing Cypher:\n{query}\nParams: url={url}")
             result = session.run(query, url=url)
             records = list(result)
             if records:
+                logger.info(f"GRAPH: Source node found for URL: {url}")
                 return dict(records[0]["s"])
+            logger.info(f"GRAPH: No Source node found for URL: {url}")
             return None
     except Exception as e:
-        logger.error(f"Failed to fetch Source node: {e}")
+        logger.error(f"GRAPH: Failed to fetch Source node: {e}")
         return None

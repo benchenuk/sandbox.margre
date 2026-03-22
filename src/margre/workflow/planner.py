@@ -17,13 +17,10 @@ def planner_node(state: OrchestratorState) -> dict:
     Decomposes the main query into a structured research plan with SubTasks.
     Uses the ChatOpenAI with `with_structured_output` to enforce schema.
     """
-    logger.info(f"Running planner for query: {state['query']}")
+    logger.info(f"PLANNER: Analyzing query: {state['query']}")
     config = get_config()
     model = get_model()
     
-    # Check if the model supports native tool calling/structured output
-    # If using local generic models, we might need a standard prompt instead
-    # Langchain's with_structured_output typically uses tool calling. Let's try it first.
     try:
         structured_model = model.with_structured_output(schema=ResearchPlan)
         
@@ -32,29 +29,32 @@ def planner_node(state: OrchestratorState) -> dict:
             HumanMessage(content=f"Decompose this research query: '{state['query']}'")
         ]
         
+        logger.debug(f"PLANNER: Sending prompt to LLM: {prompt}")
         plan: ResearchPlan = structured_model.invoke(prompt)
-        logger.info(f"Generated plan with {len(plan.subtasks)} subtasks")
         
-        # Save to state
+        subtask_summaries = ", ".join([f"{t.entity_name} ({t.entity_type})" for t in plan.subtasks])
+        logger.info(f"PLANNER: Generated plan with {len(plan.subtasks)} subtasks: {subtask_summaries}")
+        
         return {
             "plan": plan,
             "messages": [HumanMessage(content=f"Plan generated with {len(plan.subtasks)} tasks")],
-            "user_approved_plan": False  # Hand off to HITL loop
+            "user_approved_plan": False
         }
         
     except Exception as e:
-        logger.warning(f"Structured output failed ({e}), falling back to manual JSON parsing...")
+        logger.warning(f"PLANNER: Structured output failed (Error: {e}), falling back to manual JSON parsing...")
         
-        # Fallback for models without tool-call support
         fallback_prompt = [
             SystemMessage(content=PLANNER_FALLBACK_SYSTEM_PROMPT),
             HumanMessage(content=f"Decompose this query: {state['query']}")
         ]
         
+        logger.debug(f"PLANNER: Sending fallback prompt to LLM: {fallback_prompt}")
         raw_res = model.invoke(fallback_prompt).content
+        logger.debug(f"PLANNER: Received raw response: {raw_res}")
+        
         import json
         try:
-            # Simple cleanup to find JSON block
             if "```json" in raw_res:
                 raw_res = raw_res.split("```json")[1].split("```")[0]
             elif "```" in raw_res:
@@ -62,11 +62,15 @@ def planner_node(state: OrchestratorState) -> dict:
             
             plan_dict = json.loads(raw_res.strip())
             plan = ResearchPlan(**plan_dict)
+            
+            subtask_summaries = ", ".join([f"{t.entity_name} ({t.entity_type})" for t in plan.subtasks])
+            logger.info(f"PLANNER: Generated plan via fallback with {len(plan.subtasks)} subtasks: {subtask_summaries}")
+            
             return {
                 "plan": plan,
                 "messages": [HumanMessage(content=f"Plan generated via fallback")],
                 "user_approved_plan": False
             }
         except Exception as json_err:
-            logger.error(f"Fallback JSON parsing also failed: {json_err}")
+            logger.error(f"PLANNER: Fallback JSON parsing also failed: {json_err}. Raw response: {raw_res}")
             raise e

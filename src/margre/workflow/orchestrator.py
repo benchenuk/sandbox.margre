@@ -23,16 +23,19 @@ def continue_to_researchers(state: OrchestratorState) -> list[Send]:
     """
     plan = state.get("plan")
     if not plan or not plan.subtasks:
-        logger.warning("No plan or subtasks found, ending workflow.")
+        logger.error("ORCHESTRATOR: No plan or subtasks found, terminating flow.")
         return []
         
     # Generate unique run_id if not present
-    run_id = str(uuid.uuid4())[:8] # Simplified for POC
+    run_id = str(uuid.uuid4())[:8]
+    logger.info(f"ORCHESTRATOR: Starting new research run with ID: {run_id}")
     
     # Spawn one node per subtask
     sends = []
     for idx, task in enumerate(plan.subtasks):
         agent_id = f"agent_{idx}_{task.entity_name.lower().replace(' ', '_')}"
+        
+        logger.debug(f"ORCHESTRATOR: Preparing state for {agent_id} (Task: {task.entity_name})")
         
         # Construct child state (ResearcherState)
         child_state = {
@@ -46,27 +49,22 @@ def continue_to_researchers(state: OrchestratorState) -> list[Send]:
         
         sends.append(Send("researcher_node", child_state))
         
-    logger.info(f"Orchestrator dispatching {len(sends)} research agents.")
+    logger.info(f"ORCHESTRATOR: Dispatching {len(sends)} research agents for run {run_id}.")
     return sends
 
-#
-# Routing logic for HITL
-#
 def route_after_planner(state: OrchestratorState) -> Literal["researcher_dispatch", "planner"]:
     """
     Decides the path after the planner node.
-    Normally this would be where we check 'user_approved_plan' for the HITL loop.
-    For Phase 3/POC, if a plan exists we move forward.
     """
     if state.get("user_approved_plan", False):
+        logger.info("ORCHESTRATOR: Plan approved, proceeding to research dispatch.")
         return "researcher_dispatch"
     
-    # If not approved, in a real HITL system we would interrupt here.
-    # We will implement the actual interrupt in the CLI/TUI layer later.
-    # For now, let's assume auto-approval for the basic POC if not using HITL.
     if state.get("plan"):
+        logger.info("ORCHESTRATOR: Plan generated, awaiting approval.")
         return "researcher_dispatch"
     
+    logger.warning("ORCHESTRATOR: No plan available, returning to planner.")
     return "planner"
 
 #
