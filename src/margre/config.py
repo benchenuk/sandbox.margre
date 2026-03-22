@@ -26,10 +26,16 @@ class SearchConfig:
     searxng_url: str
 
 @dataclass
+class WorkflowConfig:
+    max_agents_per_run: int
+    output_dir: str
+
+@dataclass
 class Config:
     llm: LLMConfig
     neo4j: Neo4jConfig
     search: SearchConfig
+    workflow: WorkflowConfig
 
 def load_config(path: str = "config.toml") -> Config:
     """Load configuration from TOML file, overriding secrets with env vars."""
@@ -65,7 +71,14 @@ def load_config(path: str = "config.toml") -> Config:
         searxng_url=searxng_data.get("base_url", "http://localhost:8080"),
     )
     
-    return Config(llm=llm_config, neo4j=neo4j_config, search=search_config)
+    # Workflow config
+    workflow_data = data.get("workflow", {})
+    workflow_config = WorkflowConfig(
+        max_agents_per_run=workflow_data.get("max_agents_per_run", 3),
+        output_dir=workflow_data.get("output_dir", "runs"),
+    )
+    
+    return Config(llm=llm_config, neo4j=neo4j_config, search=search_config, workflow=workflow_config)
 
 # Global configured instance (lazy-loaded or manually initialized if needed)
 _config: Config | None = None
