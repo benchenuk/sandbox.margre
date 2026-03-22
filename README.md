@@ -1,73 +1,81 @@
 # MARGRe — Multi-Agent Relation Graph Researcher
 
-A CLI-based multi-agent AI research tool focused on building relational graphs of historical personalities.
+A CLI-based multi-agent AI research tool designed to build detailed relational historical graphs. It uses **LangGraph** for orchestration and **Neo4j** for graph persistence.
 
 ---
 
-## Getting Started
+## 🏗 High-Level Design
 
-### Prerequisites
-
-- **Python**: 3.12+ (managed with `uv`)
-- **Database**: [Neo4j](https://neo4j.com/download/) (via Docker)
-- **LLM Provider**: Any OpenAI-compatible endpoint (e.g., LM Studio, OpenRouter, LiteLLM)
-
-### 1. Initial Setup
-
-Install the dependencies and initialize the virtual environment:
-
-```bash
-uv sync
-```
-
-### 2. Start Neo4j
-
-Start the local Neo4j instance using the provided Docker script:
-
-```bash
-./docker_neo4j.sh
-```
-*Wait for Neo4j to be healthy at `http://localhost:7474`.*
-
-### 3. Initialize MARGRe
-
-Create your configuration and apply the database schema (constraints):
-
-```bash
-uv run margre init
-```
-This will create a `config.toml` file. Edit it to match your LLM provider's `base_url`, `api_key`, and `model`.
-
----
-
-## Basic Commands
-
-### Verify LLM Connection
-
-Test your LLM provider's response:
-```bash
-uv run margre chat "Hello, are you online?"
-```
-
-### Run Tests
-
-Execute unit and integration tests:
-```bash
-uv run pytest
+```mermaid
+graph TD
+    User([User Query]) --> Planner[Planner Agent]
+    Planner --> HITL{Human Approval}
+    HITL -- Approved --> Dispatch[Dynamic Dispatcher]
+    HITL -- Reject --> Planner
+    
+    subgraph Parallel Research
+        Dispatch -- "Send (Dynamic)" --> RA1[Researcher Agent 1]
+        Dispatch -- "Send (Dynamic)" --> RA2[Researcher Agent 2]
+        Dispatch -- "Send (Dynamic)" --> RAN[Researcher Agent N]
+    end
+    
+    RA1 --> Aggregator[Aggregator Agent]
+    RA2 --> Aggregator
+    RAN --> Aggregator
+    
+    Aggregator --> Output[Master Research Report]
+    
+    subgraph Persistence
+        RA1 -- Persistence --> MD[(Filesystem .md)]
+        RA1 -- Persistence --> GDB[(Neo4j Graph)]
+    end
 ```
 
 ---
 
-## Project Structure
+## 🚀 Getting Started
 
-- `src/margre/`: Core application logic (CLI, LLM client, Graph repository, Workflow)
-- `tests/`: Unit and integration tests
-- `runs/`: Output for research tasks (Markdown & JSON)
-- `planning/`: Project requirements and implementation plans
+### 1. Prerequisites
+- **Python 3.12+** (managed with `uv`)
+- **Docker** (for Neo4j)
+- **Local LLM** (OpenAI-compatible endpoint like LM Studio or OpenRouter)
+
+### 2. Initial Setup
+```bash
+uv sync                      # Install dependencies
+./docker_neo4j.sh            # Start Neo4j container
+uv run margre init           # Create config.toml and apply graph constraints
+```
+
+### 3. Usage
+Edit `config.toml` to point to your LLM provider. Then run:
+
+#### Full Research Run
+The main entry point. It creates a plan, asks for your approval, and then spawns agents in parallel.
+```bash
+uv run margre research "The Medicis of Florence and the Italian Renaissance"
+```
+
+#### Individual Utilities
+```bash
+uv run margre search "Machiavelli"         # Direct test of the web search provider
+uv run margre chat "Hello World"             # Direct test of the LLM connection
+```
 
 ---
 
-## Reference
+## 📂 Project Structure
+- `src/margre/workflow/`: LangGraph orchestrator, nodes (Planner, Researcher, Aggregator), and state definitions.
+- `src/margre/llm/`: OpenAILike client wrappers and centralized prompt management.
+- `src/margre/graph/`: Neo4j connection management and persistent repository.
+- `src/margre/persistence/`: Filesystem management for Markdown/JSON results.
+- `runs/`: Output for all research tasks.
 
-- [REQUIREMENTS.md](planning/REQUIREMENTS.md): Detailed functional and non-functional requirements.
-- [IMPLEMENTATION_PLAN.md](planning/IMPLEMENTATION_PLAN.md): Phased development roadmap.
+---
+
+## 🛠 Features (Phase 2 & 3 Completed)
+- **Multi-Agent Orchestration**: Dynamic task decomposition and parallel execution via LangGraph.
+- **Human-in-the-Loop**: Plan review and approval before resource execution.
+- **Pluggable Search**: Built-in support for DuckDuckGo and SearXNG.
+- **Dual Persistence**: Detailed Markdown reports on disk + structured historical entities in Neo4j (Source, Person, Event).
+- **Consolidated Reporting**: Automatic synthesis of individual sub-reports into a cohesive master summary (Phase 4 anticipation).
