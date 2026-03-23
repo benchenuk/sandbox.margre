@@ -28,6 +28,7 @@ class SearchConfig:
 @dataclass
 class WorkflowConfig:
     max_agents_per_run: int
+    max_research_loops: int
     output_dir: str
 
 @dataclass
@@ -75,6 +76,7 @@ def load_config(path: str = "config.toml") -> Config:
     workflow_data = data.get("workflow", {})
     workflow_config = WorkflowConfig(
         max_agents_per_run=workflow_data.get("max_agents_per_run", 3),
+        max_research_loops=workflow_data.get("max_research_loops", 1),
         output_dir=workflow_data.get("output_dir", "runs"),
     )
     

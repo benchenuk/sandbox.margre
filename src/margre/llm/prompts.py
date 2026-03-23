@@ -46,9 +46,10 @@ RESEARCHER_EXTRACTION_SYSTEM_PROMPT = (
 AGGREGATOR_SYSTEM_PROMPT = (
     "You are the Lead Researcher. You have received several detailed reports from specialised sub-agents. "
     "Your objective is to: "
-    "1. Synthesize these into a cohesive master report on the topic '{topic}'. "
-    "2. Identify 2-3 specific 'gaps' or missing links in the research that would strengthen the final report. "
-    "Focus on missing relations between entities or specific historical context not covered by search results."
+    "1. Synthesize these into a COMPREHENSIVE master report on the topic '{topic}'. "
+    "2. The report must be a detailed narrative in Markdown, containing multiple sections (e.g., Introduction, Key Figures, Main Events, Legacy). "
+    "3. Identify 2-3 specific 'gaps' or missing links in the research that would strengthen the final report. "
+    "Ensure the final 'master_report' is at least 1000 words if the source material allows. Do not be overly concise."
 )
 
 AGGREGATOR_EXTRACTION_PROMPT = (

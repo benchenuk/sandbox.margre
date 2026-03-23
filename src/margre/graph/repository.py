@@ -63,11 +63,11 @@ def save_entity(label: str, properties: Dict[str, Any]) -> bool:
         set_clauses.append(f"n.{key} = ${key}")
         params[key] = value
         
-    set_str = ", ".join(set_clauses)
+    set_str = (", ".join(set_clauses) + ", ") if set_clauses else ""
     query = f"""
     MERGE (n:{label} {{name: $name}})
-    ON CREATE SET {set_str}, n.created_at = datetime()
-    ON MATCH SET {set_str}, n.updated_at = datetime()
+    ON CREATE SET {set_str}n.created_at = datetime()
+    ON MATCH SET {set_str}n.updated_at = datetime()
     RETURN n.name as name
     """
     

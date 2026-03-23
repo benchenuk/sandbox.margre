@@ -2,7 +2,10 @@
 
 import uuid
 import logging
-from typing import Literal
+from typing import Literal, ContextManager, Generator
+from contextlib import contextmanager
+
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph, START, END
 from langgraph.constants import Send
 
@@ -12,6 +15,17 @@ from margre.workflow.researcher import researcher_node
 from margre.workflow.aggregator import aggregator_node
 
 logger = logging.getLogger(__name__)
+
+# Helper to provide persistent checkpointer
+@contextmanager
+def get_checkpointer() -> Generator[SqliteSaver, None, None]:
+    """Provides a managed sqlite checkpointer."""
+    from margre.persistence.notes import get_runs_dir
+    db_path = get_runs_dir() / "checkpoints.db"
+    # Create parent dirs if needed
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with SqliteSaver.from_conn_string(str(db_path)) as saver:
+        yield saver
 
 #
 # Sending logic for dynamic parallel dispatch
@@ -26,9 +40,12 @@ def continue_to_researchers(state: OrchestratorState) -> list[Send]:
         logger.error("ORCHESTRATOR: No plan or subtasks found, terminating flow.")
         return []
         
-    # Generate unique run_id if not present
+    # Reuse run_id if already present (important for resumes)
+    # Actually OrchestratorState doesn't have run_id, but the Researchers do.
+    # We should probably put run_id in OrchestratorState if we want persistence.
+    # For now, we'll generate one if not found in any message/metadata (SIMPLIFIED)
     run_id = str(uuid.uuid4())[:8]
-    logger.info(f"ORCHESTRATOR: Starting new research run with ID: {run_id}")
+    logger.info(f"ORCHESTRATOR: Starting/Resuming research run with ID: {run_id}")
     
     # Spawn one node per subtask
     sends = []
@@ -49,7 +66,7 @@ def continue_to_researchers(state: OrchestratorState) -> list[Send]:
         
         sends.append(Send("researcher_node", child_state))
         
-    logger.info(f"ORCHESTRATOR: Dispatching {len(sends)} research agents for run {run_id}.")
+    logger.info(f"ORCHESTRATOR: Dispatching {len(sends)} research agents.")
     return sends
 
 def route_after_planner(state: OrchestratorState) -> Literal["researcher_dispatch", "planner"]:
@@ -60,39 +77,39 @@ def route_after_planner(state: OrchestratorState) -> Literal["researcher_dispatc
         logger.info("ORCHESTRATOR: Plan approved, proceeding to research dispatch.")
         return "researcher_dispatch"
     
+    # If a plan exists, we have reached the interrupt point for approval
     if state.get("plan"):
-        logger.info("ORCHESTRATOR: Plan generated, awaiting approval.")
+        logger.info("ORCHESTRATOR: Plan generated, awaiting HITL approval.")
         return "researcher_dispatch"
     
     logger.warning("ORCHESTRATOR: No plan available, returning to planner.")
     return "planner"
 
-#
-# Routing logic for Refinement
-#
 def route_after_aggregation(state: OrchestratorState) -> Literal["refine", "end"]:
     """
     Decides whether to loop back for refinement or end the workflow.
-    This is intended to be a HITL point or an automated heuristic.
-    For Phase 5, if 'suggested_gaps' exist and we haven't hit loop limit, check HITL.
     """
     from margre.config import get_config
     config = get_config()
     
     # Check loop limit
-    if state.get("loop_count", 0) >= config.workflow.max_research_loops:
+    loop_count = state.get("loop_count", 0)
+    if loop_count >= config.workflow.max_research_loops:
         logger.info(f"ORCHESTRATOR: Loop limit ({config.workflow.max_research_loops}) reached. Ending.")
         return "end"
     
-    # In a full HITL system, we would interrupt here to show the report and ask the user.
-    # For and automated POC or until we add the CLI interrupt, we can terminate or auto-refine.
-    # We will favor terminating unless the user explicitly requested a resume/refine in the future.
+    # For POC, if gaps found, we loop. 
+    # In a full HITL, this would follow a user_approved_refinement flag.
+    if state.get("suggested_gaps"):
+        logger.info(f"ORCHESTRATOR: Gaps found in loop {loop_count}. Proposing refinement.")
+        return "refine"
+    
     return "end"
 
 #
 # Define the Graph
 #
-def create_graph():
+def create_graph(checkpointer: SqliteSaver | None = None):
     """Build and compile the LangGraph workflow."""
     workflow = StateGraph(OrchestratorState)
     
@@ -101,7 +118,6 @@ def create_graph():
     workflow.add_node("researcher_node", researcher_node)
     workflow.add_node("aggregator_node", aggregator_node)
     
-    # Jump node for Send logic
     def research_dispatch_node(state: OrchestratorState) -> dict:
         return {}
     workflow.add_node("research_dispatch_node", research_dispatch_node)
@@ -109,7 +125,6 @@ def create_graph():
     # 2. Add Edges
     workflow.add_edge(START, "planner_node")
     
-    # Planner -> HITL Approval -> Dispatch
     workflow.add_conditional_edges(
         "planner_node",
         route_after_planner,
@@ -119,17 +134,14 @@ def create_graph():
         }
     )
     
-    # Dispatch -> Send researchers
     workflow.add_conditional_edges(
         "research_dispatch_node",
         continue_to_researchers,
         ["researcher_node"]
     )
     
-    # Researcher results flow into aggregator
     workflow.add_edge("researcher_node", "aggregator_node")
     
-    # Aggregator -> Refinement Loop check
     workflow.add_conditional_edges(
         "aggregator_node",
         route_after_aggregation,
@@ -139,7 +151,8 @@ def create_graph():
         }
     )
     
-    return workflow.compile()
-
-# Generate the app
-app = create_graph()
+    # Compile with checkpointer and HITL interrupts
+    return workflow.compile(
+        checkpointer=checkpointer,
+        interrupt_after=["planner_node", "aggregator_node"]
+    )

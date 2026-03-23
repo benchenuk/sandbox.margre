@@ -10,11 +10,13 @@ from margre.config import load_config
 from margre.graph.connection import verify_connection, close_driver
 from margre.graph.schema import init_schema
 from margre.search import get_search_provider
-from margre.workflow.orchestrator import app as graph_app
+from margre.workflow.orchestrator import create_graph, get_checkpointer
 from margre.health import check_readiness
 
 import logging
 from rich.logging import RichHandler
+
+logger = logging.getLogger(__name__)
 
 def setup_logging(level=logging.INFO):
     """Configure structured logging for MARGRe."""
@@ -112,61 +114,185 @@ def search(query: str, limit: int = 5):
         console.print(f"[bold red]Search failed: {e}[/bold red]")
 
 @app.command()
-def research(query: str, approve: bool = False, verbose: bool = False):
+def research(query: str, approve: bool = False, verbose: bool = False, thread_id: str = ""):
     """Execute the multi-agent research workflow."""
     setup_logging(level=logging.DEBUG if verbose else logging.INFO)
     if not check_readiness(check_llm=True, check_db=True):
         raise typer.Exit(1)
          
-    console.print(Panel(f"[bold cyan]Researching:[/bold cyan] {query}", border_style="blue"))
+    if not thread_id:
+        import uuid
+        thread_id = str(uuid.uuid4())[:8]
+        
+    console.print(Panel(f"[bold cyan]Researching:[/bold cyan] {query}\n[dim]Thread ID: {thread_id}[/dim]", border_style="blue"))
     
-    # 1. State Initialisation
-    initial_state = {
-        "query": query,
-        "messages": [],
-        "plan": None,
-        "agent_results": [],
-        "current_loop": 1,
-        "user_approved_plan": approve
-    }
+    from margre.workflow.orchestrator import create_graph, get_checkpointer
     
-    config = {"configurable": {"thread_id": "test_run"}} # Mock thread for local POC
+    with get_checkpointer() as checkpointer:
+        graph = create_graph(checkpointer)
+        config = {"configurable": {"thread_id": thread_id}}
+        
+        # Initial call
+        initial_state = {
+            "query": query,
+            "messages": [],
+            "plan": None,
+            "agent_results": [],
+            "loop_count": 0,
+            "user_approved_plan": approve,
+            "master_report": None,
+            "suggested_gaps": []
+        }
+        
+        # Run until interrupt or completion
+        _run_workflow(graph, initial_state, config, approve)
+
+@app.command()
+def resume(thread_id: str, approve: bool = False, verbose: bool = False):
+    """Resume an existing research run by its thread ID."""
+    setup_logging(level=logging.DEBUG if verbose else logging.INFO)
+    if not check_readiness(check_llm=True, check_db=True):
+        raise typer.Exit(1)
+        
+    console.print(Panel(f"[bold cyan]Resuming Thread:[/bold cyan] {thread_id}", border_style="blue"))
     
+    from margre.workflow.orchestrator import create_graph, get_checkpointer
+    
+    with get_checkpointer() as checkpointer:
+        graph = create_graph(checkpointer)
+        config = {"configurable": {"thread_id": thread_id}}
+        
+        # Check if thread exists
+        state = graph.get_state(config)
+        if not state or not state.values:
+            console.print(f"[bold red]Thread '{thread_id}' not found in checkpoints![/bold red]")
+            return
+            
+        # Resume from where we left off
+        _run_workflow(graph, None, config, approve)
+
+def _run_workflow(graph, initial_state, config, initial_approve):
+    """Helper to run the graph and handle interrupts."""
     try:
-        # We use app.stream to handle the HITL point after the planner
-        for step_data in graph_app.stream(initial_state, config):
-            for node_name, result in step_data.items():
-                if node_name == "planner_node":
-                    plan = result.get("plan")
-                    if not plan:
-                        console.print("[red]Planner failed to generate a plan.[/red]")
-                        return
-                        
-                    # Print the plan for review
-                    console.print(f"\n[bold green]Research Plan Generated:[/bold green]")
+        # If initial_state is None, it resumes
+        current_state = initial_state
+        
+        while True:
+            # Run until next interrupt or end
+            for event in graph.stream(current_state, config, stream_mode="values"):
+                # We can log state values here if needed
+                pass
+            
+            # Check why we stopped
+            graph_state = graph.get_state(config)
+            next_nodes = graph_state.next
+            
+            if not next_nodes:
+                # Reached END
+                console.print(Panel.fit("[bold green]Workflow completed![/bold green]", border_style="green"))
+                break
+            
+            # 1. Planner Interrupt (Approval)
+            if "research_dispatch_node" in next_nodes or "planner_node" in next_nodes:
+                # Check if we need approval
+                state_values = graph_state.values
+                plan = state_values.get("plan")
+                
+                if plan:
+                    console.print(f"\n[bold green]Research Plan Generated (Loop {state_values.get('loop_count')}):[/bold green]")
                     for idx, task in enumerate(plan.subtasks, 1):
                         console.print(f"  {idx}. [cyan]{task.entity_name}[/cyan] ({task.entity_type}): {task.research_query}")
                     
-                    # HITL: Ask for approval if not pre-approved
-                    if not approve:
+                    if not initial_approve and not state_values.get("user_approved_plan"):
                         if not typer.confirm("\nDo you approve this research plan?", default=True):
-                            console.print("[yellow]Plan rejected. Exiting.[/yellow]")
+                            console.print("[yellow]Plan rejected. You can resume later with 'margre resume'.[/yellow]")
                             return
-                        # Resume with approval (In a real stateful app, we'd update state and resume)
-                        # For now, we continue the stream with the approved flag if it wasn't pre-approved
-                        # actually, LangGraph v2 uses interrupts. Let's simplify for Phase 3 deliverable.
-                        approve = True
+                        # Update state with approval
+                        graph.update_state(config, {"user_approved_plan": True})
                 
-                elif node_name == "researcher_node":
-                    # results summarize what happened
-                    pass
-        
-        console.print(Panel.fit("[bold green]Research phase completed successfully![/bold green]", border_style="green"))
-        
+                # Resume
+                current_state = None
+                continue
+
+            # 2. Aggregator Interrupt (Review/Refinement)
+            if "END" in next_nodes or not next_nodes:
+                # Actually if it's interrupted AFTER aggregator, it might be for refinement
+                pass
+            
+            # Check for gaps if we stopped after aggregator
+            state_values = graph_state.values
+            if state_values.get("master_report"):
+                console.print(f"\n[bold green]Master Report Synthesized (Loop {state_values.get('loop_count')}):[/bold green]")
+                # Show first 500 chars
+                summary = state_values.get("master_report")[:500] + "..."
+                console.print(Panel(summary, title="Report Preview", border_style="green"))
+                
+                gaps = state_values.get("suggested_gaps")
+                if gaps:
+                    console.print("[bold yellow]Suggested Gaps for Refinement:[/bold yellow]")
+                    for gap in gaps:
+                        console.print(f" - {gap}")
+                    
+                    if typer.confirm("\nWould you like to refine the research based on these gaps?", default=False):
+                        # Proceeding to refinement
+                        current_state = None
+                        continue
+                
+                # If no gaps or user declines, we end
+                console.print("[blue]Finishing research. Final results saved to filesystem.[/blue]")
+                break
+                
     except Exception as e:
-        console.print(f"[bold red]Research workflow failed: {e}[/bold red]")
+        console.print(f"[bold red]Workflow error: {e}[/bold red]")
+        import traceback
+        logger.debug(traceback.format_exc())
     finally:
         close_driver()
+
+#
+# Subcommands Group: runs
+#
+runs_app = typer.Typer(help="Manage research runs and historical reports.")
+app.add_typer(runs_app, name="runs")
+
+@runs_app.command("list")
+def runs_list():
+    """List all completed or interrupted research runs."""
+    from margre.persistence.runs import list_runs, read_run_metadata
+    
+    run_ids = list_runs()
+    if not run_ids:
+        console.print("[yellow]No research runs found.[/yellow]")
+        return
+        
+    console.print("\n[bold cyan]Historical Research Runs:[/bold cyan]")
+    for rid in run_ids:
+        meta = read_run_metadata(rid)
+        query = meta.get("query", "Unknown Query")
+        # Find thread_id context if possible
+        console.print(f" - [bold green]{rid}[/bold green]: {query}")
+
+@runs_app.command("show")
+def runs_show(run_id: str):
+    """Show details and the final report path for a specific run."""
+    from margre.persistence.runs import read_run_metadata
+    
+    meta = read_run_metadata(run_id)
+    if not meta:
+        console.print(f"[bold red]Run ID '{run_id}' not found.[/bold red]")
+        return
+        
+    console.print(Panel(f"[bold cyan]Run Details:[/bold cyan] {run_id}", border_style="blue"))
+    console.print(f"[bold green]Query:[/bold green] {meta.get('query')}")
+    console.print(f"[bold green]Agents Contributed:[/bold green] {len(meta.get('agents_involved', []))}")
+    
+    if meta.get("final_report_path"):
+        console.print(f"[bold green]Final Report:[/bold green] [underline]{meta.get('final_report_path')}[/underline]")
+    
+    if meta.get("master_report"):
+        summary = meta.get("master_report")[:800] + "..."
+        console.print("\n[bold cyan]Report Preview:[/bold cyan]")
+        console.print(Panel(summary, border_style="green"))
 
 if __name__ == "__main__":
     app()

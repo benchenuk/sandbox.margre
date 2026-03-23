@@ -58,3 +58,11 @@ def read_run_metadata(run_id: str) -> Dict[str, Any]:
         return json.loads(file_path.read_text(encoding="utf-8"))
     logger.warning(f"PERSISTENCE: aggregation.json not found for run '{run_id}' at: {file_path}")
     return {}
+def list_runs() -> list[str]:
+    """Get a list of all run IDs by scanning the runs directory."""
+    runs_dir = get_runs_dir()
+    if not runs_dir.exists():
+        return []
+    
+    # Return names of directories that contain aggregation.json
+    return [d.name for d in runs_dir.iterdir() if d.is_dir() and (d / "aggregation.json").exists()]
