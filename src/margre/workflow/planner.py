@@ -68,7 +68,7 @@ def planner_node(state: OrchestratorState) -> dict:
         
         fallback_prompt = [
             SystemMessage(content=PLANNER_FALLBACK_SYSTEM_PROMPT),
-            HumanMessage(content=f"Decompose this query and focus on gaps if provided: {seed_person}")
+            HumanMessage(content=f"Identify discovery tasks for the social and professional network of: {seed_person}")
         ]
         
         logger.debug(f"PLANNER: Sending fallback prompt to LLM: {fallback_prompt}")

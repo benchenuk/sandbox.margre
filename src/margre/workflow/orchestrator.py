@@ -9,7 +9,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph, START, END
 from langgraph.constants import Send
 
-from margre.workflow.state import OrchestratorState, ResearcherState, SubTask
+from margre.workflow.state import OrchestratorState, ResearcherState
 from margre.workflow.planner import planner_node
 from margre.workflow.researcher import researcher_node
 from margre.workflow.aggregator import aggregator_node

@@ -18,7 +18,8 @@ def generate_final_report(run_id: str, master_report: str, metadata: Dict[str, A
     report_file = path / "final_report.md"
     
     # Enrich report with metadata header
-    header = f"# MARGRe Research: {metadata.get('query', 'Unknown Topic')}\n"
+    topic = metadata.get('seed_person') or metadata.get('query') or 'Unknown'
+    header = f"# MARGRe Discovery: {topic}\n"
     header += f"Run ID: `{run_id}` | Agents: {len(metadata.get('agents_involved', []))}\n\n---\n\n"
     
     full_content = header + master_report

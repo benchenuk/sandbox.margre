@@ -114,8 +114,8 @@ def search(query: str, limit: int = 5):
         console.print(f"[bold red]Search failed: {e}[/bold red]")
 
 @app.command()
-def research(query: str, approve: bool = False, verbose: bool = False, thread_id: str = ""):
-    """Execute the multi-agent research workflow."""
+def discover(seed_person: str, approve: bool = False, verbose: bool = False, thread_id: str = ""):
+    """Execute the multi-agent relationship discovery workflow."""
     setup_logging(level=logging.DEBUG if verbose else logging.INFO)
     if not check_readiness(check_llm=True, check_db=True):
         raise typer.Exit(1)
@@ -124,7 +124,7 @@ def research(query: str, approve: bool = False, verbose: bool = False, thread_id
         import uuid
         thread_id = str(uuid.uuid4())[:8]
         
-    console.print(Panel(f"[bold cyan]Researching:[/bold cyan] {query}\n[dim]Thread ID: {thread_id}[/dim]", border_style="blue"))
+    console.print(Panel(f"[bold cyan]Discovering Connections for:[/bold cyan] {seed_person}\n[dim]Thread ID: {thread_id}[/dim]", border_style="blue"))
     
     from margre.workflow.orchestrator import create_graph, get_checkpointer
     
@@ -134,10 +134,11 @@ def research(query: str, approve: bool = False, verbose: bool = False, thread_id
         
         # Initial call
         initial_state = {
-            "query": query,
+            "seed_person": seed_person,
             "messages": [],
             "plan": None,
             "agent_results": [],
+            "discovered_persons": [],
             "loop_count": 0,
             "user_approved_plan": approve,
             "master_report": None,
@@ -149,7 +150,7 @@ def research(query: str, approve: bool = False, verbose: bool = False, thread_id
 
 @app.command()
 def resume(thread_id: str, approve: bool = False, verbose: bool = False):
-    """Resume an existing research run by its thread ID."""
+    """Resume an existing discovery run by its thread ID."""
     setup_logging(level=logging.DEBUG if verbose else logging.INFO)
     if not check_readiness(check_llm=True, check_db=True):
         raise typer.Exit(1)
@@ -174,73 +175,67 @@ def resume(thread_id: str, approve: bool = False, verbose: bool = False):
 def _run_workflow(graph, initial_state, config, initial_approve):
     """Helper to run the graph and handle interrupts."""
     try:
-        # If initial_state is None, it resumes
         current_state = initial_state
         
         while True:
-            # Run until next interrupt or end
+            # 1. Stream values until interrupt
+            last_event = None
             for event in graph.stream(current_state, config, stream_mode="values"):
-                # We can log state values here if needed
-                pass
+                last_event = event
             
-            # Check why we stopped
+            # 2. Check current graph state
             graph_state = graph.get_state(config)
             next_nodes = graph_state.next
+            state_values = graph_state.values
             
             if not next_nodes:
-                # Reached END
-                console.print(Panel.fit("[bold green]Workflow completed![/bold green]", border_style="green"))
+                console.print(Panel.fit("[bold green]Discovery workflow completed![/bold green]", border_style="green"))
                 break
             
-            # 1. Planner Interrupt (Approval)
-            if "research_dispatch_node" in next_nodes or "planner_node" in next_nodes:
-                # Check if we need approval
-                state_values = graph_state.values
+            # 3. Handle Planner Interrupt (Discovery Plan)
+            if "research_dispatch_node" in next_nodes:
                 plan = state_values.get("plan")
-                
                 if plan:
-                    console.print(f"\n[bold green]Research Plan Generated (Loop {state_values.get('loop_count')}):[/bold green]")
+                    console.print(f"\n[bold green]Discovery Plan for {plan.seed_person} (Loop {state_values.get('loop_count')}):[/bold green]")
                     for idx, task in enumerate(plan.subtasks, 1):
-                        console.print(f"  {idx}. [cyan]{task.entity_name}[/cyan] ({task.entity_type}): {task.research_query}")
+                        console.print(f"  {idx}. [bold cyan]{task.target_person}[/bold cyan] ({task.search_angle}): {task.research_query}")
                     
                     if not initial_approve and not state_values.get("user_approved_plan"):
-                        if not typer.confirm("\nDo you approve this research plan?", default=True):
+                        if not typer.confirm("\nDo you approve these discovery subtasks?", default=True):
                             console.print("[yellow]Plan rejected. You can resume later with 'margre resume'.[/yellow]")
                             return
                         # Update state with approval
                         graph.update_state(config, {"user_approved_plan": True})
                 
-                # Resume
+                # Continue execution
                 current_state = None
                 continue
 
-            # 2. Aggregator Interrupt (Review/Refinement)
-            if "END" in next_nodes or not next_nodes:
-                # Actually if it's interrupted AFTER aggregator, it might be for refinement
-                pass
-            
-            # Check for gaps if we stopped after aggregator
-            state_values = graph_state.values
-            if state_values.get("master_report"):
-                console.print(f"\n[bold green]Master Report Synthesized (Loop {state_values.get('loop_count')}):[/bold green]")
-                # Show first 500 chars
-                summary = state_values.get("master_report")[:500] + "..."
-                console.print(Panel(summary, title="Report Preview", border_style="green"))
-                
-                gaps = state_values.get("suggested_gaps")
-                if gaps:
-                    console.print("[bold yellow]Suggested Gaps for Refinement:[/bold yellow]")
-                    for gap in gaps:
-                        console.print(f" - {gap}")
+            # 4. Handle Aggregator Interrupt (Expansion candidates)
+            if "__end__" not in next_nodes: 
+                # If we stopped after aggregator_node
+                if state_values.get("master_report"):
+                    console.print(f"\n[bold green]Discovery Synthesis for {state_values.get('seed_person')}:[/bold green]")
+                    preview = state_values.get("master_report")[:600] + "..."
+                    console.print(Panel(preview, title="Network Overview", border_style="green"))
                     
-                    if typer.confirm("\nWould you like to refine the research based on these gaps?", default=False):
-                        # Proceeding to refinement
-                        current_state = None
-                        continue
-                
-                # If no gaps or user declines, we end
-                console.print("[blue]Finishing research. Final results saved to filesystem.[/blue]")
-                break
+                    candidates = state_values.get("suggested_gaps")
+                    if candidates:
+                        console.print(f"\n[bold yellow]Discovered Potential Candidates for Expansion ({len(candidates)}):[/bold yellow]")
+                        for cand in candidates:
+                            console.print(f" • [bold cyan]{cand}[/bold cyan]")
+                        
+                        if typer.confirm("\nWould you like to expand the research to discover connections for these candidates?", default=False):
+                            # For now, picking the first candidate as the new seed for the next loop
+                            # (Advanced: could pick all or a subset)
+                            next_seed = candidates[0]
+                            console.print(f"[blue]Expanding to discover connections for: {next_seed}[/blue]")
+                            graph.update_state(config, {"seed_person": next_seed, "user_approved_plan": False})
+                            current_state = None
+                            continue
+                    
+                    console.print("[blue]Discovery cycle complete. Final results saved to graph and filesystem.[/blue]")
+                    break
                 
     except Exception as e:
         console.print(f"[bold red]Workflow error: {e}[/bold red]")
@@ -248,6 +243,47 @@ def _run_workflow(graph, initial_state, config, initial_approve):
         logger.debug(traceback.format_exc())
     finally:
         close_driver()
+
+#
+# Subcommands Group: graph
+#
+graph_app = typer.Typer(help="Query and inspect the relationships in Neo4j.")
+app.add_typer(graph_app, name="graph")
+
+@graph_app.command("show")
+def graph_show(person: str):
+    """Show known connections for a given person in the terminal."""
+    from margre.graph.repository import get_person_connections
+    from rich.table import Table
+    
+    setup_logging()
+    if not verify_connection():
+        console.print("[bold red]Could not connect to Neo4j.[/bold red]")
+        return
+        
+    connections = get_person_connections(person)
+    if not connections:
+        console.print(f"[yellow]No connections found for {person} in the graph.[/yellow]")
+        return
+        
+    table = Table(title=f"Relationships for [bold cyan]{person}[/bold cyan]")
+    table.add_column("Type", style="magenta")
+    table.add_column("Target", style="cyan")
+    table.add_column("Context", style="dim")
+    table.add_column("Temporal", style="yellow")
+    
+    for c in connections:
+        props = c.get("properties", {})
+        temporal = f"{props.get('year', '')} {props.get('period', '')}".strip()
+        table.add_row(
+            c["rel_type"],
+            f"{c['target_name']} ({c['target_label']})",
+            props.get("context", ""),
+            temporal
+        )
+        
+    console.print(table)
+    close_driver()
 
 #
 # Subcommands Group: runs

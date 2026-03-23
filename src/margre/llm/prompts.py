@@ -4,31 +4,33 @@
 # Planner Node Prompts (Discovery Mode)
 #
 DISCOVERY_PLANNER_SYSTEM_PROMPT = (
-    "You are a biographical researcher specializing in historical networks. "
-    "Your objective is to generate a research plan to discover the personal connections of a '{seed_person}'. "
-    "You must specify search angles to find: "
-    "1. Direct collaborators and personal acquaintances. "
-    "2. Influences and those influenced by them. "
-    "3. Shared institutions (schools, academies, employers). "
-    "4. Critics, opponents, or rivals. "
-    "5. Co-authors or contributors to shared works. "
-    "Focus on finding NAMES of other people and the NATURE of their connection."
+    "You are a social and professional network analyst. "
+    "Given '{seed_person}', generate 3-5 research tasks whose sole purpose is to identify OTHER INDIVIDUALS by name. "
+    "Each task must have a specific search_angle from this list: "
+    "collaborators, mentors, students, patrons, rivals, critics, correspondents, institutional_peers. "
+    "The research_query for each task must be a web-search query designed to return pages listing names, e.g.: "
+    "  - '{seed_person} collaborators and associates' "
+    "  - '{seed_person} teachers, mentors or peers who influenced' "
+    "  - '{seed_person} rivals, competitors, critiques' "
+    "  - 'members of the same [institution] as {seed_person}' "
+    "DO NOT generate queries about the person's biography, works, legacy, or timeline — only about WHO they interacted with. "
+    "target_person for every subtask MUST be '{seed_person}'."
 )
 
 PLANNER_FALLBACK_SYSTEM_PROMPT = (
-    "You are an expert biographical researcher. You must decompose the seed person into a structured JSON object "
-    "following this schema: {{ \"seed_person\": \"...\", \"subtasks\": [ {{ \"target_person\": \"...\", \"search_angle\": \"...\", \"research_query\": \"...\" }} ] }}. "
-    "Only return the JSON block, no conversational filler."
+    "You are a social network analyst. Return ONLY a JSON object to discover WHO '{seed_person}' interacted with. "
+    "Schema: {{ \"seed_person\": \"...\", \"subtasks\": [ {{ \"target_person\": \"<same as seed>\", \"search_angle\": \"collaborators|mentors|rivals|patrons|correspondents\", \"research_query\": \"<web search to find names>\" }} ] }}. "
+    "Every research_query must be designed to find NAMES of people, not biographical facts."
 )
 
 #
 # Researcher Node Prompts
 #
 RESEARCHER_SYNTHESIS_SYSTEM_PROMPT = (
-    "You are a meticulous historical researcher. "
-    "Your goal is to write a detailed, academically-toned report about a specific person, event, or organisation based on provided search snippets. "
-    "Cite your sources using [1], [2], etc. at the end of relevant sentences. "
-    "Focus on accuracy, specific dates, and clear relational context (who they knew, what they influenced)."
+    "You are a relationship-focused researcher. "
+    "Given search snippets about a person, write a report that prioritises NAMING every individual mentioned and their relationship to the subject. "
+    "For each person named, explain: how they were connected, when, and in what context (work, rivalry, patronage, etc.). "
+    "Cite sources with [1], [2], etc. Focus on WHO rather than WHAT."
 )
 
 RESEARCHER_SYNTHESIS_HUMAN_TEMPLATE = (
@@ -77,9 +79,9 @@ AGGREGATOR_EXTRACTION_PROMPT = (
 # Planner Node Refinement Prompt
 #
 PLANNER_REFINEMENT_TEMPLATE = (
-    "You are refining an existing research plan. "
-    "Topic: {topic}\n"
+    "You are refining a network discovery plan for '{topic}'. "
     "Previous Findings: {master_summary}\n"
-    "Suggested Gaps to Fill: {gaps}\n\n"
-    "Decompose the user's research query into parallel subtasks, focusing on the unresolved gaps."
+    "Expansion Candidates: {gaps}\n\n"
+    "Generate new subtasks to discover the social and professional connections of these candidates. "
+    "Each task must focus on finding NEW names, not revisiting known connections."
 )

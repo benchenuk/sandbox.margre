@@ -1,3 +1,5 @@
+import logging
+from langchain_core.messages import SystemMessage, HumanMessage
 from margre.workflow.state import ResearcherState, DiscoveryExtractionResult
 from margre.llm.client import get_model
 from margre.search import get_search_provider
