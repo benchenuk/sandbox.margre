@@ -12,95 +12,109 @@ logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+from collections import Counter
+import logging
+from langchain_core.messages import SystemMessage, HumanMessage
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+from margre.llm.client import get_model
+from margre.workflow.state import OrchestratorState
+from margre.llm.prompts import AGGREGATOR_SYSTEM_PROMPT
+from margre.persistence.runs import save_run_metadata
+from margre.config import get_config
+from margre.graph.repository import person_exists
+
+logger = logging.getLogger(__name__)
+
 class GapAnalysisResult(BaseModel):
     """Structured gap analysis output."""
-    suggested_gaps: List[str] = Field(description="2-3 specific questions or entities to research further")
+    suggested_gaps: List[str] = Field(description="2-3 specific questions or expansion candidates")
 
 def aggregator_node(state: OrchestratorState) -> dict:
     """
-    Synthesizes results from all research agents into a master report and identifies gaps.
+    Synthesizes discovery results and identifies next expansion candidates.
     """
-    agent_count = len(state['agent_results'])
-    logger.info(f"AGGREGATOR: Starting synthesis for query '{state['query']}' using {agent_count} agent reports.")
+    seed_person = state['seed_person']
+    agent_results = state.get('agent_results', [])
+    logger.info(f"AGGREGATOR: Synthesizing results for: {seed_person}")
     
-    if not state["agent_results"]:
-        return {"messages": [SystemMessage(content="No research results to aggregate.")]}
+    if not agent_results:
+        return {"messages": [SystemMessage(content="No discovery results to aggregate.")]}
         
+    config = get_config()
     model = get_model()
     
-    # Collect all reports into a single context
+    # 1. Collect all agent reports for synthesis
     context_chunks = []
-    for res in state["agent_results"]:
-        agent_id = res.get("agent_id", "Unknown")
-        entity = res.get("entity_name", "Unknown")
-        report_path = res.get("report_path", "")
-        
+    for res in agent_results:
+        agent_id = res.get("agent_id")
+        report_path = res.get("report_path")
         try:
             from margre.persistence.notes import read_research_note
-            # /runs/<run_id>/agents/<agent_id>.md
             parts = report_path.split("/")
             run_id = parts[-3]
             content = read_research_note(run_id, agent_id)
             if content:
-                context_chunks.append(f"--- AGENT: {agent_id} (Entity: {entity}) ---\n{content}")
-                logger.info(f"AGGREGATOR: Loaded {len(content)} characters from agent {agent_id}.")
-            else:
-                logger.warning(f"AGGREGATOR: Empty content for agent {agent_id}.")
+                context_chunks.append(f"### Discovery Report: {agent_id}\n{content}")
         except Exception as e:
             logger.warning(f"AGGREGATOR: Could not read report for {agent_id}: {e}")
 
     full_context = "\n\n".join(context_chunks)
-    logger.info(f"AGGREGATOR: Total context for synthesis: {len(full_context)} characters.")
     
-    # Stage 1: Generate the full text master report
+    # 2. Synthesis (Narrative overview)
     synthesis_prompt = [
-        SystemMessage(content=AGGREGATOR_SYSTEM_PROMPT.format(topic=state["query"])),
-        HumanMessage(content=f"Sub-Agent Reports:\n\n{full_context}\n\nPlease synthesize the final comprehensive master report.")
+        SystemMessage(content=AGGREGATOR_SYSTEM_PROMPT.format(topic=seed_person)),
+        HumanMessage(content=f"Sub-Agent Discovery Reports:\n\n{full_context}\n\nPlease synthesize a final overview of {seed_person}'s connections.")
     ]
+    master_report = model.invoke(synthesis_prompt).content
+ 
+    # 3. Expansion Candidate Filtering
+    # Collect all discovered persons from all agents
+    all_discovered = state.get("discovered_persons", [])
     
-    logger.info("AGGREGATOR: Invoking LLM for master report synthesis...")
-    master_report_res = model.invoke(synthesis_prompt)
-    master_report = master_report_res.content
-    logger.info(f"AGGREGATOR: Master report generated. Length: {len(master_report)} characters.")
+    # Filter out the seed person and those already in Neo4j
+    candidates = [p for p in all_discovered if p.lower() != seed_person.lower()]
+    
+    # Simple deduplication and ranking by frequency
+    counts = Counter(candidates)
+    
+    # Filter further: only keep those we haven't researched (not in Neo4j)
+    unique_candidates = []
+    for name, count in counts.most_common():
+        if not person_exists(name):
+            unique_candidates.append(name)
+        else:
+            logger.debug(f"AGGREGATOR: Skipping {name} (already in graph).")
 
-    # Stage 2: Extract gaps using structured output
-    gap_prompt = [
-        SystemMessage(content="You are a research analyst. Based on the following master research report, identify 2-3 specific knowledge gaps or missing linkages that require further research."),
-        HumanMessage(content=f"Master Report:\n{master_report}")
-    ]
+    # 4. Limit and Log
+    limit = config.workflow.max_candidates_per_loop
+    final_candidates = unique_candidates[:limit]
+    dropped = unique_candidates[limit:]
     
-    logger.info("AGGREGATOR: Performing structured gap analysis on the master report...")
-    structured_model = model.with_structured_output(schema=GapAnalysisResult)
-    try:
-        gap_result: GapAnalysisResult = structured_model.invoke(gap_prompt)
-        suggested_gaps = gap_result.suggested_gaps
-    except Exception as e:
-        logger.warning(f"AGGREGATOR: Gap analysis failed: {e}. Defaulting to empty gap list.")
-        suggested_gaps = []
+    if dropped:
+        logger.info(f"AGGREGATOR: Dropped {len(dropped)} candidates due to limit ({limit}): {', '.join(dropped)}")
     
-    # Save master report metadata
+    logger.info(f"AGGREGATOR: Identified {len(final_candidates)} expansion candidates: {', '.join(final_candidates)}")
+
+    # 5. Save and Export
     try:
-        run_id = state["agent_results"][0]["report_path"].split("/")[-3]
+        run_id = agent_results[0]["report_path"].split("/")[-3]
         metadata = {
-            "query": state["query"],
+            "seed_person": seed_person,
             "master_report": master_report,
-            "suggested_gaps": suggested_gaps,
-            "agents_involved": [r["agent_id"] for r in state["agent_results"]]
+            "expansion_candidates": final_candidates,
+            "agents_involved": [r["agent_id"] for r in agent_results]
         }
         save_run_metadata(run_id, metadata)
         
-        # 6. Generate final report (Markdown)
         from margre.reporting.markdown import generate_final_report
-        report_path = generate_final_report(run_id, master_report, metadata)
-        logger.info(f"AGGREGATOR: Final report generated at: {report_path}")
-        
+        generate_final_report(run_id, master_report, metadata)
     except Exception as e:
-        logger.error(f"AGGREGATOR: Failed to save run metadata or final report: {e}")
-    
-    logger.info(f"AGGREGATOR: Final synthesis complete. Found {len(suggested_gaps)} gaps.")
-    
+        logger.error(f"AGGREGATOR: Failed to save final report: {e}")
+
     return {
         "master_report": master_report,
-        "suggested_gaps": suggested_gaps,
-        "messages": [HumanMessage(content="Master report synthesized with gap analysis.")],
+        "suggested_gaps": final_candidates, # Map candidates to suggested_gaps for the loop
+        "messages": [HumanMessage(content=f"Discovery synthesized. {len(final_candidates)} candidates found for expansion.")],
     }

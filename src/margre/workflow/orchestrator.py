@@ -37,22 +37,17 @@ def continue_to_researchers(state: OrchestratorState) -> list[Send]:
     """
     plan = state.get("plan")
     if not plan or not plan.subtasks:
-        logger.error("ORCHESTRATOR: No plan or subtasks found, terminating flow.")
+        logger.error("ORCHESTRATOR: No discovery plan found, terminating flow.")
         return []
         
-    # Reuse run_id if already present (important for resumes)
-    # Actually OrchestratorState doesn't have run_id, but the Researchers do.
-    # We should probably put run_id in OrchestratorState if we want persistence.
-    # For now, we'll generate one if not found in any message/metadata (SIMPLIFIED)
-    run_id = str(uuid.uuid4())[:8]
-    logger.info(f"ORCHESTRATOR: Starting/Resuming research run with ID: {run_id}")
+    # Generate run_id from seed_person if not provided internally 
+    # (Actually we should probably pass it in the thread config, but keeping it simple for now)
+    run_id = str(uuid.uuid4())[:8] 
     
     # Spawn one node per subtask
     sends = []
     for idx, task in enumerate(plan.subtasks):
-        agent_id = f"agent_{idx}_{task.entity_name.lower().replace(' ', '_')}"
-        
-        logger.debug(f"ORCHESTRATOR: Preparing state for {agent_id} (Task: {task.entity_name})")
+        agent_id = f"agent_{idx}_{task.target_person.lower().replace(' ', '_')}"
         
         # Construct child state (ResearcherState)
         child_state = {
@@ -66,7 +61,7 @@ def continue_to_researchers(state: OrchestratorState) -> list[Send]:
         
         sends.append(Send("researcher_node", child_state))
         
-    logger.info(f"ORCHESTRATOR: Dispatching {len(sends)} research agents.")
+    logger.info(f"ORCHESTRATOR: Dispatching {len(sends)} discovery agents for '{plan.seed_person}'.")
     return sends
 
 def route_after_planner(state: OrchestratorState) -> Literal["researcher_dispatch", "planner"]:
@@ -74,37 +69,39 @@ def route_after_planner(state: OrchestratorState) -> Literal["researcher_dispatc
     Decides the path after the planner node.
     """
     if state.get("user_approved_plan", False):
-        logger.info("ORCHESTRATOR: Plan approved, proceeding to research dispatch.")
+        logger.info("ORCHESTRATOR: Plan approved, proceeding to discovery.")
         return "researcher_dispatch"
     
-    # If a plan exists, we have reached the interrupt point for approval
+    # HITL Interrupt point
     if state.get("plan"):
-        logger.info("ORCHESTRATOR: Plan generated, awaiting HITL approval.")
         return "researcher_dispatch"
     
-    logger.warning("ORCHESTRATOR: No plan available, returning to planner.")
     return "planner"
 
-def route_after_aggregation(state: OrchestratorState) -> Literal["refine", "end"]:
+def route_after_aggregation(state: OrchestratorState) -> Literal["expand", "end"]:
     """
-    Decides whether to loop back for refinement or end the workflow.
+    Decides whether to expand to New Persons or end the workflow.
     """
     from margre.config import get_config
     config = get_config()
     
-    # Check loop limit
     loop_count = state.get("loop_count", 0)
-    if loop_count >= config.workflow.max_research_loops:
-        logger.info(f"ORCHESTRATOR: Loop limit ({config.workflow.max_research_loops}) reached. Ending.")
+    
+    # 1. Depth Check
+    if loop_count >= config.workflow.max_expansion_depth:
+        logger.info(f"ORCHESTRATOR: Expansion depth limit ({config.workflow.max_expansion_depth}) reached.")
         return "end"
     
-    # For POC, if gaps found, we loop. 
-    # In a full HITL, this would follow a user_approved_refinement flag.
-    if state.get("suggested_gaps"):
-        logger.info(f"ORCHESTRATOR: Gaps found in loop {loop_count}. Proposing refinement.")
-        return "refine"
+    # 2. Candidate Check
+    if not state.get("suggested_gaps"):
+        logger.info("ORCHESTRATOR: No new expansion candidates found. Ending.")
+        return "end"
     
-    return "end"
+    # 3. Expansion Logic
+    # In next loop, we will pick candidates from suggested_gaps.
+    # The actual HITL selection happens in the CLI before resuming.
+    logger.info(f"ORCHESTRATOR: {len(state['suggested_gaps'])} candidates ready for expansion loop {loop_count + 1}.")
+    return "expand"
 
 #
 # Define the Graph
@@ -146,7 +143,7 @@ def create_graph(checkpointer: SqliteSaver | None = None):
         "aggregator_node",
         route_after_aggregation,
         {
-            "refine": "planner_node",
+            "expand": "planner_node",
             "end": END
         }
     )
