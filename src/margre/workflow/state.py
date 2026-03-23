@@ -20,6 +20,21 @@ class DiscoveryPlan(BaseModel):
     seed_person: str = Field(description="Current focal person")
     subtasks: List[DiscoveryTask] = Field(description="Connection-oriented discovery tasks")
 
+class DiscoveredRelationship(BaseModel):
+    """A single relational connection extracted from research."""
+    rel_type: str = Field(description="Relationship label (e.g., KNEW, COLLABORATED_WITH, STUDIED_AT)")
+    target_name: str = Field(description="Name of the other person, institution, work, event, or location")
+    target_label: str = Field(description="Type of the target entity (Person, Institution, Work, Location, Event)")
+    context: str = Field(description="Brief historical context of the connection")
+    year: Optional[int] = Field(None, description="The most relevant year for timeline ordering")
+    date: Optional[str] = Field(None, description="Specific known date (e.g., DoB, death date)")
+    period: Optional[str] = Field(None, description="Human readable period or date range")
+
+class DiscoveryExtractionResult(BaseModel):
+    """Structured collection of all discovered connections."""
+    relationships: List[DiscoveredRelationship] = Field(default_factory=list)
+    new_persons: List[str] = Field(default_factory=list, description="List of NAMES of and only of individuals for potential further research")
+
 #
 # Overall Graph State
 #

@@ -38,11 +38,20 @@ RESEARCHER_SYNTHESIS_HUMAN_TEMPLATE = (
     "Produce a detailed Markdown report with citations."
 )
 
-RESEARCHER_EXTRACTION_SYSTEM_PROMPT = (
-    "Extract structured entities and their properties from the following research report. "
-    "Ensure the primary entity mentioned in the subtask is included. "
-    "For each entity, provide a label (Person, Event, Organisation), its name, and a set of properties. "
-    "Properties should include a 'description', 'key_dates' (list), and other relevant key-value pairs."
+#
+# Researcher Node Prompts (Discovery Mode)
+#
+RELATIONSHIP_EXTRACTION_PROMPT = (
+    "Extract structured relationships and personal connections from the following research report about {seed_person}. "
+    "For each connection, provide: "
+    "1. rel_type: Use standard labels like KNEW, COLLABORATED_WITH, STUDIED_AT, INFLUENCED, CRITIQUED, OPPOSED, MEMBER_OF, LIVED_IN, CREATED, PARTICIPATED_IN, etc. "
+    "2. target_name: Name of the other person, institution, work, event, or location. "
+    "3. target_label: One of [Person, Institution, Work, Location, Event]. "
+    "4. context: A brief summary of how they are connected. "
+    "5. year: The primary year for the connection (integer). "
+    "6. date: Specific date string if known. "
+    "7. period: Descriptive era or date range. "
+    "Also, extract a clean list (new_persons) of NAMES of and only of individuals who deserve their own dedicated research expansion in the next phase."
 )
 
 #
