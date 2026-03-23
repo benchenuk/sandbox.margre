@@ -1,6 +1,6 @@
-# MARGRe — Multi-Agent Relation Graph Researcher
+# MARGRe — Multi-Agent Relationship Discovery Engine
 
-A CLI-based multi-agent AI research tool designed to build detailed relational historical graphs. It uses **LangGraph** for orchestration and **Neo4j** for graph persistence.
+A CLI-based multi-agent AI tool designed to discover and map complex historical and contemporary networks. Starting from a single individual, it uses **LangGraph** to recursively hunt for connections (collaborators, rivals, mentors, institutions) and persists them into a **Neo4j** graph.
 
 ---
 
@@ -8,26 +8,26 @@ A CLI-based multi-agent AI research tool designed to build detailed relational h
 
 ```mermaid
 graph TD
-    User([User Query]) --> Planner[Planner Agent]
-    Planner --> HITL{Human Approval}
-    HITL -- Approved --> Dispatch[Dynamic Dispatcher]
-    HITL -- Reject --> Planner
+    User([Seed Person]) --> Planner[Planner Agent]
+    Planner --> PlanReview{Plan Approval}
+    PlanReview -- Approved --> Dispatch[Dynamic Dispatcher]
     
-    subgraph Parallel Research
-        Dispatch -- "Send (Dynamic)" --> RA1[Researcher Agent 1]
-        Dispatch -- "Send (Dynamic)" --> RA2[Researcher Agent 2]
-        Dispatch -- "Send (Dynamic)" --> RAN[Researcher Agent N]
+    subgraph Parallel Discovery
+        Dispatch -- "Relationship Extraction" --> RA1[Research Agent 1]
+        Dispatch -- "Relationship Extraction" --> RA2[Research Agent 2]
     end
     
-    RA1 --> Aggregator[Aggregator Agent]
+    RA1 --> Aggregator[Aggregator & Ranking]
     RA2 --> Aggregator
-    RAN --> Aggregator
     
-    Aggregator --> Output[Master Research Report]
+    Aggregator --> Output[Master Discovery Report]
+    Aggregator --> ExpansionReview{Expansion Approval}
+    ExpansionReview -- "Loop to Candidate" --> Planner
+    ExpansionReview -- "Done" --> End([Final Graph])
     
     subgraph Persistence
-        RA1 -- Persistence --> MD[(Filesystem .md)]
-        RA1 -- Persistence --> GDB[(Neo4j Graph)]
+        RA1 -- "Save Connections" --> GDB[(Neo4j Graph)]
+        RA1 -- "Save Discovery" --> MD[(Filesystem .md)]
     end
 ```
 
@@ -48,18 +48,23 @@ uv run margre init           # Create config.toml and apply graph constraints
 ```
 
 ### 3. Usage
-Edit `config.toml` to point to your LLM provider. Then run:
 
-#### Full Research Run
-The main entry point. It creates a plan, asks for your approval, and then spawns agents in parallel. Use `--verbose` to see detailed agent logs.
+#### 🔍 Start Discovery
+Initiate the discovery workflow from a single seed person. The system will propose research angles, extract relationships, and then suggest new candidates for recursive expansion.
 ```bash
-uv run margre research "The Medicis of Florence and the Italian Renaissance" --verbose
+uv run margre discover "Leonardo da Vinci" --verbose
 ```
 
-#### Individual Utilities
+#### 📊 Inspect the Graph
+Quickly view known connections for a person directly in your terminal.
 ```bash
-uv run margre search "Machiavelli"         # Direct test of the web search provider
-uv run margre chat "Hello World"             # Direct test of the LLM connection
+uv run margre graph show "Leonardo da Vinci"
+```
+
+#### Utilities
+```bash
+uv run margre search "Machiavelli"     # Test web search
+uv run margre chat "Status check"      # Test LLM contact
 ```
 
 ---
@@ -73,9 +78,14 @@ uv run margre chat "Hello World"             # Direct test of the LLM connection
 
 ---
 
-## 🛠 Features (Phase 2 & 3 Completed)
+## 🛠 Core Features
 - **Multi-Agent Orchestration**: Dynamic task decomposition and parallel execution via LangGraph.
 - **Human-in-the-Loop**: Plan review and approval before resource execution.
 - **Pluggable Search**: Built-in support for DuckDuckGo and SearXNG.
 - **Dual Persistence**: Detailed Markdown reports on disk + structured historical entities in Neo4j (Source, Person, Event).
-- **Consolidated Reporting**: Automatic synthesis of individual sub-reports into a cohesive master summary (Phase 4 anticipation).
+- **Consolidated Reporting**: Automatic synthesis of individual sub-reports into a cohesive master summary.
+- **Person-Centric Discovery**: Recursive mapping of social and professional networks.
+- **Structured Extraction**: Automatic identification of `Person`, `Institution`, `Work`, `Location`, and `Event` nodes with rich relationship types (KNEW, COLLABORATED_WITH, etc.).
+- **Temporal Tracking**: Relationships capture years, exact dates, and historical periods for timeline building.
+- **Recursive Expansion Loop**: Human-in-the-loop candidate selection to grow the graph's breadth and depth.
+- **Dual Persistence**: Detailed Markdown reports + queryable Neo4j graph data.
