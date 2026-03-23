@@ -64,7 +64,25 @@ def researcher_node(state: ResearcherState) -> dict:
     
     logger.info(f"RESEARCHER [{agent_id}]: Extracting relationships.")
     structured_model = model.with_structured_output(schema=DiscoveryExtractionResult)
-    extracted: DiscoveryExtractionResult = structured_model.invoke(extraction_prompt)
+    
+    try:
+        extracted: DiscoveryExtractionResult = structured_model.invoke(extraction_prompt)
+    except Exception as e:
+        logger.warning(f"RESEARCHER [{agent_id}]: Structured extraction failed ({e}). Falling back to manual JSON parsing...")
+        raw_res = model.invoke(extraction_prompt).content
+        
+        import json
+        try:
+            if "```json" in raw_res:
+                raw_res = raw_res.split("```json")[1].split("```")[0]
+            elif "```" in raw_res:
+                raw_res = raw_res.split("```")[1].split("```")[0]
+            
+            data = json.loads(raw_res.strip())
+            extracted = DiscoveryExtractionResult(**data)
+        except Exception as json_err:
+            logger.error(f"RESEARCHER [{agent_id}]: Manual parsing failed: {json_err}. Returning empty result.")
+            extracted = DiscoveryExtractionResult(relationships=[], new_persons=[])
     
     # 4. Persistence
     # Save search sources

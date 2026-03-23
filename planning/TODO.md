@@ -1,0 +1,2 @@
+- [ ] Node "Work" is misleading. Originally we wanted something that can connect people based on their work. This should've probably been their views, contributions to their fields, which then may be influencing, critiqued by other persons. 
+- 
