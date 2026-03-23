@@ -11,9 +11,13 @@ def init_schema() -> List[str]:
     queries = [
         "CREATE CONSTRAINT person_name IF NOT EXISTS FOR (p:Person) REQUIRE p.name IS UNIQUE",
         "CREATE CONSTRAINT event_name IF NOT EXISTS FOR (e:Event) REQUIRE e.name IS UNIQUE",
-        "CREATE CONSTRAINT org_name IF NOT EXISTS FOR (o:Organisation) REQUIRE o.name IS UNIQUE",
+        "CREATE CONSTRAINT inst_name IF NOT EXISTS FOR (i:Institution) REQUIRE i.name IS UNIQUE",
+        "CREATE CONSTRAINT work_name IF NOT EXISTS FOR (w:Work) REQUIRE w.name IS UNIQUE",
+        "CREATE CONSTRAINT loc_name IF NOT EXISTS FOR (l:Location) REQUIRE l.name IS UNIQUE",
         "CREATE CONSTRAINT source_url IF NOT EXISTS FOR (s:Source) REQUIRE s.url IS UNIQUE",
         "CREATE CONSTRAINT run_id IF NOT EXISTS FOR (r:ResearchRun) REQUIRE r.run_id IS UNIQUE",
+        # Migration: Relabel Organisation to Institution 
+        "MATCH (o:Organisation) REMOVE o:Organisation SET o:Institution"
     ]
     
     results = []

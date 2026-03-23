@@ -51,7 +51,6 @@ Add constraints and indexes for new relationship-aware schema:
 (Person)-[:LIVED_IN {period, year}]->(Location)
 (Person)-[:CREATED {year, date}]->(Work)
 (Person)-[:CONTRIBUTED_TO {role, year}]->(Work)
-(Person)-[:PRESENTED_AT {role, year, date}]->(Event)
 (Person)-[:PARTICIPATED_IN {role, year, date}]->(Event)
 ```
 

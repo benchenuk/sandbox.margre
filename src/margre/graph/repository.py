@@ -40,10 +40,11 @@ def save_source(url: str, title: str, snippet: str, file_path: str = "") -> bool
 
 def save_entity(label: str, properties: Dict[str, Any]) -> bool:
     """
-    Save or update an entity (Person, Event, Organisation) in Neo4j.
+    Save or update an entity (Person, Event, Institution, Work, Location) in Neo4j.
     Uses MERGE on the 'name' property.
     """
-    if label not in ["Person", "Event", "Organisation"]:
+    allowed_labels = ["Person", "Event", "Institution", "Work", "Location"]
+    if label not in allowed_labels:
         logger.error(f"GRAPH: Unsupported entity label: {label}")
         return False
         
@@ -84,6 +85,76 @@ def save_entity(label: str, properties: Dict[str, Any]) -> bool:
         logger.error(f"GRAPH: Failed to save {label} node: {e}")
         return False
 
+def save_relationship(from_name: str, from_label: str, to_name: str, to_label: str, rel_type: str, properties: Dict[str, Any]) -> bool:
+    """
+    Create a typed relationship between two entities.
+    Example: save_relationship("Leonardo", "Person", "Verrocchio", "Person", "STUDIED_WITH", {"year": 1466})
+    """
+    logger.info(f"GRAPH: Saving relationship: ({from_name})-[{rel_type}]->({to_name})")
+    
+    # Build dynamic SET clause for relationship properties
+    set_clauses = []
+    params = {
+        "from_name": from_name,
+        "to_name": to_name
+    }
+    for key, value in properties.items():
+        set_clauses.append(f"r.{key} = ${key}")
+        params[key] = value
+    
+    set_str = "SET " + ", ".join(set_clauses) if set_clauses else ""
+    
+    query = f"""
+    MATCH (a:{from_label} {{name: $from_name}})
+    MATCH (b:{to_label} {{name: $to_name}})
+    MERGE (a)-[r:{rel_type}]->(b)
+    {set_str}
+    RETURN type(r)
+    """
+    
+    driver = get_driver()
+    try:
+        with driver.session() as session:
+            result = session.run(query, **params)
+            success = bool(list(result))
+            return success
+    except Exception as e:
+        logger.error(f"GRAPH: Failed to save relationship: {e}")
+        return False
+
+def person_exists(name: str) -> bool:
+    """Check if a person node already exists in the graph."""
+    query = "MATCH (p:Person {name: $name}) RETURN p.name as name"
+    driver = get_driver()
+    try:
+        with driver.session() as session:
+            result = session.run(query, name=name)
+            return bool(list(result))
+    except Exception:
+        return False
+
+def get_person_connections(name: str) -> List[Dict[str, Any]]:
+    """Retrieve all direct relationships for a person."""
+    query = """
+    MATCH (p:Person {name: $name})-[r]->(target)
+    RETURN type(r) as rel_type, labels(target)[0] as target_label, target.name as target_name, properties(r) as props
+    """
+    driver = get_driver()
+    connections = []
+    try:
+        with driver.session() as session:
+            result = session.run(query, name=name)
+            for record in result:
+                connections.append({
+                    "rel_type": record["rel_type"],
+                    "target_label": record["target_label"],
+                    "target_name": record["target_name"],
+                    "properties": record["props"]
+                })
+    except Exception as e:
+        logger.error(f"GRAPH: Failed to get person connections: {e}")
+    return connections
+
 def link_entity_to_source(entity_name: str, entity_label: str, source_url: str) -> bool:
     """Create a SOURCED_FROM relationship between an entity and a source."""
     logger.info(f"GRAPH: Linking {entity_label} '{entity_name}' to Source: {source_url}")
@@ -96,35 +167,20 @@ def link_entity_to_source(entity_name: str, entity_label: str, source_url: str) 
     driver = get_driver()
     try:
         with driver.session() as session:
-            logger.debug(f"GRAPH: Executing Cypher:\n{query}\nParams: entity_name={entity_name}, source_url={source_url}")
             result = session.run(query, entity_name=entity_name, source_url=source_url)
-            success = bool(list(result))
-            if success:
-                logger.info(f"GRAPH: Successfully linked {entity_name} to {source_url}")
-            return success
+            return bool(list(result))
     except Exception as e:
         logger.error(f"GRAPH: Failed to link entity to source: {e}")
         return False
 
 def get_source_by_url(url: str) -> Dict[str, Any] | None:
     """Retrieve a Source node by its URL."""
-    logger.info(f"GRAPH: Fetching Source node by URL: {url}")
-    query = """
-    MATCH (s:Source {url: $url})
-    RETURN s
-    """
-    
+    query = "MATCH (s:Source {url: $url}) RETURN s"
     driver = get_driver()
     try:
         with driver.session() as session:
-            logger.debug(f"GRAPH: Executing Cypher:\n{query}\nParams: url={url}")
             result = session.run(query, url=url)
             records = list(result)
-            if records:
-                logger.info(f"GRAPH: Source node found for URL: {url}")
-                return dict(records[0]["s"])
-            logger.info(f"GRAPH: No Source node found for URL: {url}")
-            return None
-    except Exception as e:
-        logger.error(f"GRAPH: Failed to fetch Source node: {e}")
+            return dict(records[0]["s"]) if records else None
+    except Exception:
         return None
