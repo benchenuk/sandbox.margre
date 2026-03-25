@@ -251,7 +251,10 @@ graph_app = typer.Typer(help="Query and inspect the relationships in Neo4j.")
 app.add_typer(graph_app, name="graph")
 
 @graph_app.command("show")
-def graph_show(person: str):
+def graph_show(
+    person: str,
+    filter_label: str = typer.Option(None, "--filter", "-f", help="Filter by entity label (Person, Institution, Contribution, etc.)")
+):
     """Show known connections for a given person in the terminal."""
     from margre.graph.repository import get_person_connections
     from rich.table import Table
@@ -262,8 +265,16 @@ def graph_show(person: str):
         return
         
     connections = get_person_connections(person)
+    
+    if filter_label:
+        connections = [
+            c for c in connections 
+            if c["target_label"].lower() == filter_label.lower()
+        ]
+        
     if not connections:
-        console.print(f"[yellow]No connections found for {person} in the graph.[/yellow]")
+        filter_msg = f" (filtered by {filter_label})" if filter_label else ""
+        console.print(f"[yellow]No connections found for {person}{filter_msg} in the graph.[/yellow]")
         return
         
     table = Table(title=f"Relationships for [bold cyan]{person}[/bold cyan]")
