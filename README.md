@@ -85,7 +85,7 @@ uv run margre chat "Status check"      # Test LLM contact
 - **Dual Persistence**: Detailed Markdown reports on disk + structured historical entities in Neo4j (Source, Person, Event).
 - **Consolidated Reporting**: Automatic synthesis of individual sub-reports into a cohesive master summary.
 - **Person-Centric Discovery**: Recursive mapping of social and professional networks.
-- **Structured Extraction**: Automatic identification of `Person`, `Institution`, `Work`, `Location`, and `Event` nodes with rich relationship types (KNEW, COLLABORATED_WITH, etc.).
+- **Structured Extraction**: Automatic identification of `Person`, `Institution`, `Contribution`, `Location`, and `Event` nodes with rich relationship types (KNEW, COLLABORATED_WITH, etc.).
 - **Temporal Tracking**: Relationships capture years, exact dates, and historical periods for timeline building.
 - **Recursive Expansion Loop**: Human-in-the-loop candidate selection to grow the graph's breadth and depth.
 - **Dual Persistence**: Detailed Markdown reports + queryable Neo4j graph data.

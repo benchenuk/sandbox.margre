@@ -49,8 +49,8 @@ Produce a detailed Markdown report with citations."""
 RELATIONSHIP_EXTRACTION_PROMPT = """Extract structured relationships and personal connections from the following research report about {seed_person}.
 For each connection, provide:
 1. rel_type: Use standard labels like KNEW, COLLABORATED_WITH, STUDIED_AT, INFLUENCED, CRITIQUED, OPPOSED, MEMBER_OF, LIVED_IN, CREATED, PARTICIPATED_IN, etc.
-2. target_name: Name of the other person, institution, work, event, or location.
-3. target_label: One of [Person, Institution, Work, Location, Event].
+2. target_name: Name of the other person, institution, contribution, event, or location.
+3. target_label: One of [Person, Institution, Contribution, Location, Event].
 4. context: A brief summary of how they are connected.
 5. year: The primary year for the connection (integer).
 6. date: Specific date string if known.

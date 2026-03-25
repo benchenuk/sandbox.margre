@@ -40,10 +40,10 @@ def save_source(url: str, title: str, snippet: str, file_path: str = "") -> bool
 
 def save_entity(label: str, properties: Dict[str, Any]) -> bool:
     """
-    Save or update an entity (Person, Event, Institution, Work, Location) in Neo4j.
+    Save or update an entity (Person, Event, Institution, Contribution, Location) in Neo4j.
     Uses MERGE on the 'name' property.
     """
-    allowed_labels = ["Person", "Event", "Institution", "Work", "Location"]
+    allowed_labels = ["Person", "Event", "Institution", "Contribution", "Location"]
     if label not in allowed_labels:
         logger.error(f"GRAPH: Unsupported entity label: {label}")
         return False
