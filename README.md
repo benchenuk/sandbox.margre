@@ -3,6 +3,9 @@
 A CLI-based multi-agent AI tool designed to discover and map complex historical and contemporary networks. Starting from a single individual, it uses **LangGraph** to recursively hunt for connections (collaborators, rivals, mentors, institutions) and persists them into a **Neo4j** graph.
 
 ---
+<img src="docs/graph.png" alt="graph" width="1024"/>
+
+---
 
 ## 🏗 High-Level Design
 
@@ -27,7 +30,9 @@ graph TD
     
     subgraph Persistence
         RA1 -- "Save Connections" --> GDB[(Neo4j Graph)]
+        RA2 -- "Save Connections" --> GDB[(Neo4j Graph)]
         RA1 -- "Save Discovery" --> MD[(Filesystem .md)]
+        RA2 -- "Save Discovery" --> MD[(Filesystem .md)]
     end
 ```
 
