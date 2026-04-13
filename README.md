@@ -4,12 +4,18 @@ A CLI-based multi-agent AI tool designed to discover and map complex historical 
 
 ---
 <img src="docs/graph.png" alt="graph" width="1024"/>
+<img src="docs/mermaid.png" alt="mermaid" width="720"/>
 
 ---
 
 ## 🏗 High-Level Design
 
 ```mermaid
+---
+config:
+  flowchart:
+    useWidth: 400
+---
 graph TD
     User([Seed Person]) --> Planner[Planner Agent]
     Planner --> PlanReview{Plan Approval}
