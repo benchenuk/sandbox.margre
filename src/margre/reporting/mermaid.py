@@ -107,7 +107,7 @@ def generate_mermaid(run_id: str) -> str:
 
     # Sort rel_types alphabetically for stable output
     for rel_type in sorted(by_type.keys()):
-        lines.append(f"        {rel_type}")
+        lines.append(f'        ((" {rel_type} "))')
         for rel in sorted(by_type[rel_type], key=lambda r: r["target_name"]):
             year = rel.get("year") or rel.get("period")
             label = _mermaid_label(rel["target_name"])
