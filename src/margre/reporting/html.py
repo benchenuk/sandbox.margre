@@ -215,7 +215,7 @@ def generate_html_report(run_id: str) -> str:
     graph_section = ""
     try:
         mermaid_source = generate_mermaid(run_id)
-        if mermaid_source.strip() and "-->" in mermaid_source:
+        if mermaid_source.strip() and ("-->" in mermaid_source or mermaid_source.startswith("mindmap")):
             graph_section = _build_graph_section(mermaid_source)
     except Exception as e:
         logger.warning(f"HTML_REPORT: Could not generate Mermaid graph: {e}")

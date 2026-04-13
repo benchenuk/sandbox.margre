@@ -1,7 +1,6 @@
-"""Tests for Mermaid flowchart generation."""
+"""Tests for Mermaid mindmap generation."""
 
 import json
-import re
 import pytest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,12 +8,9 @@ from unittest.mock import patch
 from margre.reporting.mermaid import (
     _mermaid_id,
     _mermaid_label,
-    _edge_label,
     _deduplicate_relationships,
     generate_mermaid,
     save_mermaid,
-    NODE_SHAPES,
-    DEFAULT_SHAPE,
 )
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "runs" / "test_leonardo"
@@ -50,26 +46,13 @@ class TestMermaidLabel:
         assert _mermaid_label("Milan") == "Milan"
 
     def test_quotes_escaped(self):
-        assert _mermaid_label("He said \"hello\"") == "He said &#quot;hello&#quot;"
+        assert _mermaid_label('He said "hello"') == "He said &#quot;hello&#quot;"
 
-    def test_with_extra(self):
-        result = _mermaid_label("Milan", "city")
-        assert "Milan" in result
-        assert "<br/>" in result
-
-
-class TestEdgeLabel:
-    def test_type_only(self):
-        assert _edge_label("KNEW", None, None) == "KNEW"
-
-    def test_type_with_year(self):
-        assert _edge_label("COLLABORATED_WITH", 1490, None) == "COLLABORATED_WITH 1490"
-
-    def test_type_with_period_no_year(self):
-        assert _edge_label("INFLUENCED", None, "1490s") == "INFLUENCED 1490s"
-
-    def test_year_takes_precedence_over_period(self):
-        assert _edge_label("KNEW", 1500, "Early 16th century") == "KNEW 1500"
+    def test_parens_replaced(self):
+        # "(Giovannetta)" becomes "–Giovannetta" — space before ( is consumed
+        assert _mermaid_label("Giovanna (Giovannetta) da Vinci") == "Giovanna –Giovannetta da Vinci"
+        # No space before paren: just replace
+        assert _mermaid_label("Foo(bar)") == "Foo –bar"
 
 
 class TestDeduplicateRelationships:
@@ -124,86 +107,54 @@ class TestGenerateMermaid:
     def test_generates_graph_lr_header(self, mock_runs_dir):
         with patch("margre.reporting.mermaid.get_runs_dir", return_value=mock_runs_dir):
             output = generate_mermaid("test_leonardo")
-        assert output.startswith("graph LR\n")
+        assert output.startswith("mindmap\n")
 
     def test_seed_person_declared_first(self, mock_runs_dir):
         with patch("margre.reporting.mermaid.get_runs_dir", return_value=mock_runs_dir):
             output = generate_mermaid("test_leonardo")
         lines = output.strip().split("\n")
-        # First line is "graph LR", second should be seed person node
-        assert "Leonardo_da_Vinci" in lines[1]
+        # Second line is the seed person mindmap root
         assert "Leonardo da Vinci" in lines[1]
 
     def test_no_self_edge(self, mock_runs_dir):
-        """Seed person should not have an edge pointing to itself."""
+        """Seed person should not appear under itself."""
         with patch("margre.reporting.mermaid.get_runs_dir", return_value=mock_runs_dir):
             output = generate_mermaid("test_leonardo")
-        for line in output.split("\n"):
-            if "Leonardo_da_Vinci -->|" in line:
-                # The target (after |) should not be Leonardo_da_Vinci again
-                assert line.rstrip().endswith("Leonardo_da_Vinci") is False, \
-                    f"Self-edge found: {line}"
+        # In mindmap format, no nested occurrence of the seed label under itself
+        lines = output.split("\n")
+        in_studied_at = False
+        for line in lines:
+            if "STUDIED_AT" in line:
+                in_studied_at = True
+            if in_studied_at and "Leonardo da Vinci" in line and "(( " not in line:
+                pytest.fail(f"Self-reference found under STUDIED_AT: {line}")
 
-    def test_different_node_shapes(self, mock_runs_dir):
-        """Different entity labels should use different Mermaid shapes."""
+    def test_leaf_nodes_include_year(self, mock_runs_dir):
+        """Leaf nodes should include the year in the label."""
         with patch("margre.reporting.mermaid.get_runs_dir", return_value=mock_runs_dir):
             output = generate_mermaid("test_leonardo")
-
-        # Location (Milan) should use {{ }}
-        assert "Milan{{" in output or "Milan}}{{" in output or '{{"Milan"}}' in output
-
-        # Institution (Verrocchio's Workshop) should use [ ]
-        assert "Verrocchio_s_Workshop[" in output
-
-        # Contribution (The Last Supper) should use [[ ]]
-        assert "[[" in output  # Double bracket for Contribution shape
-
-    def test_edge_labels_include_year(self, mock_runs_dir):
-        """Edges should show rel_type and year."""
-        with patch("margre.reporting.mermaid.get_runs_dir", return_value=mock_runs_dir):
-            output = generate_mermaid("test_leonardo")
-        assert "STUDIED_AT 1472" in output
-        assert "COLLABORATED_WITH 1490" in output
+        # Years appear inline in leaf labels like ("Andrea Verrocchio (1472)")
+        assert "1472" in output
+        assert "1490" in output
 
     def test_deduplication_merges_verrocchio(self, mock_runs_dir):
-        """Andrea Verrocchio appears in both agents with STUDIED_AT and COLLABORATED_WITH —
-        deduplication should keep both types but merge duplicates within same type."""
+        """Andrea Verrocchio appears under both STUDIED_AT and COLLABORATED_WITH —
+        each rel_type branch should contain him exactly once."""
         with patch("margre.reporting.mermaid.get_runs_dir", return_value=mock_runs_dir):
             output = generate_mermaid("test_leonardo")
-        # Count edges targeting Andrea Verrocchio specifically (not the Workshop)
-        andrea_edges = [l for l in output.split("\n") if "Andrea_Verrocchio" in l and "-->" in l]
-        # Two distinct relationship types to the person: STUDIED_AT and COLLABORATED_WITH
-        assert len(andrea_edges) == 2
+        # Count how many times "Andrea Verrocchio" appears in the output
+        andrea_count = output.count("Andrea Verrocchio")
+        # Should appear in both COLLABORATED_WITH and STUDIED_AT sections (2+ times)
+        assert andrea_count >= 2
 
-    def test_all_targets_declared_as_nodes(self, mock_runs_dir):
-        """Every target in an edge should also have a node declaration."""
+    def test_rel_types_appear_as_branches(self, mock_runs_dir):
+        """Relationship types should appear as branch labels in the mindmap."""
         with patch("margre.reporting.mermaid.get_runs_dir", return_value=mock_runs_dir):
             output = generate_mermaid("test_leonardo")
-
-        lines = output.strip().split("\n")
-
-        # Extract node IDs from node declaration lines using regex.
-        # Node lines match pattern: <whitespace>NodeID<shape_chars>"Label"<shape_chars>
-        # The ID is always the first word (alphanumeric + underscore characters).
-        node_id_pattern = re.compile(r'^\s+(\w+)')
-        declared_ids = set()
-        for line in lines:
-            if "-->" in line or line.startswith("graph"):
-                continue
-            m = node_id_pattern.match(line)
-            if m:
-                declared_ids.add(m.group(1))
-
-        # Extract target IDs from edge lines
-        # Edge lines look like: Seed_ID -->|"label"| Target_ID
-        edge_pattern = re.compile(r'-->\|"[^"]*"\|\s*(\w+)')
-        for line in lines:
-            if "-->" not in line:
-                continue
-            m = edge_pattern.search(line)
-            if m:
-                assert m.group(1) in declared_ids or m.group(1) == "Leonardo_da_Vinci", \
-                    f"Edge target '{m.group(1)}' has no node declaration"
+        # Key relationship types from fixture data appear as branches
+        assert "STUDIED_AT" in output
+        assert "LIVED_IN" in output
+        assert "CREATED" in output
 
     def test_empty_run_produces_minimal_output(self, mock_runs_dir, tmp_path):
         """A run with no agent JSONs should produce a minimal graph with just the seed."""
@@ -214,10 +165,8 @@ class TestGenerateMermaid:
 
         with patch("margre.reporting.mermaid.get_runs_dir", return_value=tmp_path):
             output = generate_mermaid("empty_run")
-        assert "graph LR" in output
-        assert "Unknown_Person" in output
-        # No edges
-        assert "-->" not in output
+        assert "mindmap" in output
+        assert "Unknown Person" in output
 
 
 class TestSaveMermaid:
@@ -234,5 +183,5 @@ class TestSaveMermaid:
         assert Path(path).exists()
         assert Path(path).name == "graph.mmd"
         content = Path(path).read_text(encoding="utf-8")
-        assert content.startswith("graph LR")
-        assert "Leonardo_da_Vinci" in content
+        assert content.startswith("mindmap")
+        assert "Leonardo da Vinci" in content

@@ -1,4 +1,4 @@
-"""Mermaid flowchart generation from agent structured JSON results."""
+"""Mermaid mindmap generation from agent structured JSON results."""
 
 import json
 import logging
@@ -11,41 +11,15 @@ from margre.persistence.runs import get_runs_dir
 
 logger = logging.getLogger(__name__)
 
-# Mermaid node shape conventions by entity label
-NODE_SHAPES = {
-    "Person": ("([", "])"),       # rounded/stadium
-    "Institution": ("[", "]"),     # rectangle
-    "Contribution":("[[", "]]"),   # subroutine (double rectangle)
-    "Location": ("{{", "}}"),      # diamond-ish (hexagon)
-    "Event": (">", "]"),          # asymmetric (flag)
-    "Source": ("(", ")"),         # rounded
-}
-
-DEFAULT_SHAPE = ("[", "]")
-
 
 def _mermaid_id(name: str) -> str:
     """Sanitise a name into a valid Mermaid node ID (no spaces, no special chars)."""
     return re.sub(r'[^a-zA-Z0-9_]', '_', name)
 
 
-def _mermaid_label(name: str, extra: str = "") -> str:
-    """Build a display label, truncating long names and appending extra info."""
-    label = name
-    if extra:
-        label = f"{name}<br/>{extra}"
-    # Escape quotes for Mermaid
-    return label.replace('"', '&#quot;')
-
-
-def _edge_label(rel_type: str, year: int | None, period: str | None) -> str:
-    """Build an edge label from relationship type and temporal data."""
-    parts = [rel_type]
-    if year:
-        parts.append(str(year))
-    elif period:
-        parts.append(period)
-    return " ".join(parts)
+def _mermaid_label(name: str) -> str:
+    """Build a display label for a mindmap node, escaping parens for Mermaid."""
+    return name.replace('"', '&#quot;').replace(" (", " –").replace("(", " –").replace(")", "")
 
 
 def _deduplicate_relationships(
@@ -69,15 +43,15 @@ def _deduplicate_relationships(
 
 
 def generate_mermaid(run_id: str) -> str:
-    """Generate a Mermaid LR flowchart from the agent JSON results of a run.
+    """Generate a Mermaid mindmap from the agent JSON results of a run.
 
     Reads all ``runs/<run_id>/agents/*.json`` files and the
     ``aggregation.json`` seed person, deduplicates relationships, and
-    produces a left-to-right flowchart with edge labels for relationship
-    types and temporal data.
+    produces a mindmap grouped by relationship type with years appended
+    to target names.
 
     Returns:
-        Mermaid flowchart source as a string.
+        Mermaid mindmap source as a string.
     """
     runs_dir = get_runs_dir()
     run_path = runs_dir / run_id
@@ -105,46 +79,41 @@ def generate_mermaid(run_id: str) -> str:
 
     if not all_relationships:
         logger.warning(f"MERMAID: No relationships found for run '{run_id}'")
-        return f"graph LR\n    { _mermaid_id(seed_person)}[\"{seed_person}\"]\n"
+        return f"mindmap\n    ((\"{_mermaid_label(seed_person)}\"))\n"
 
     # 3. Deduplicate and filter self-edges (seed pointing to itself)
     relationships = _deduplicate_relationships(all_relationships)
     seed_id = _mermaid_id(seed_person)
     relationships = [r for r in relationships if _mermaid_id(r["target_name"]) != seed_id]
 
-    # 4. Group relationships by type
+    # 4. Build Mermaid mindmap: seed -> rel_type -> "target (year)"
+    lines = ["mindmap"]
+
+    # Root: seed person
+    lines.append(f"    ((\"{_mermaid_label(seed_person)}\"))")
+
+    # Collect by rel_type; deduplicate targets per rel_type
     by_type: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for rel in relationships:
-        by_type[rel["rel_type"]].append(rel)
+        key = rel["rel_type"]
+        # Deduplicate: keep richest temporal info per target per rel_type
+        existing = next((r for r in by_type[key] if r["target_name"] == rel["target_name"]), None)
+        if existing:
+            if rel.get("year") and not existing.get("year"):
+                by_type[key].remove(existing)
+                by_type[key].append(rel)
+        else:
+            by_type[key].append(rel)
 
-    # 5. Build Mermaid flowchart with subgraphs per relationship type
-    lines = [f"graph LR"]
-
-    # Collect declared nodes to avoid duplicates
-    declared_nodes: Dict[str, Tuple[str, str]] = {}  # id -> (shape_left, shape_right)
-
-    # Seed person
-    seed_shape = NODE_SHAPES.get("Person", DEFAULT_SHAPE)
-    lines.append(f"    {seed_id}{seed_shape[0]}\"{_mermaid_label(seed_person)}\"{seed_shape[1]}")
-
-    for rel_type, rels in by_type.items():
-        subgraph_id = _mermaid_id(rel_type)
-        lines.append(f"    subgraph {subgraph_id}[\"{rel_type}\"]")
-
-        for rel in rels:
-            target_id = _mermaid_id(rel["target_name"])
-            if target_id not in declared_nodes:
-                target_label = rel.get("target_label", "Person")
-                shape = NODE_SHAPES.get(target_label, DEFAULT_SHAPE)
-                declared_nodes[target_id] = shape
-                lines.append(
-                    f"        {target_id}{shape[0]}\"{_mermaid_label(rel['target_name'])}\"{shape[1]}"
-                )
-            label = _edge_label(rel["rel_type"], rel.get("year"), rel.get("period"))
-            lines.append(f"        {seed_id} -->|\"{label}\"| {target_id}")
-
-        lines.append("    end")
-        lines.append("")
+    # Sort rel_types alphabetically for stable output
+    for rel_type in sorted(by_type.keys()):
+        lines.append(f"        {rel_type}")
+        for rel in sorted(by_type[rel_type], key=lambda r: r["target_name"]):
+            year = rel.get("year") or rel.get("period")
+            label = _mermaid_label(rel["target_name"])
+            if year:
+                label = f"{label} ({year})"
+            lines.append(f'            ("{label}")')
 
     return "\n".join(lines) + "\n"
 

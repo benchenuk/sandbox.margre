@@ -323,23 +323,61 @@ def runs_list():
 def runs_show(run_id: str):
     """Show details and the final report path for a specific run."""
     from margre.persistence.runs import read_run_metadata
-    
+
     meta = read_run_metadata(run_id)
     if not meta:
         console.print(f"[bold red]Run ID '{run_id}' not found.[/bold red]")
         return
-        
+
     console.print(Panel(f"[bold cyan]Run Details:[/bold cyan] {run_id}", border_style="blue"))
     console.print(f"[bold green]Query:[/bold green] {meta.get('query')}")
     console.print(f"[bold green]Agents Contributed:[/bold green] {len(meta.get('agents_involved', []))}")
-    
+
     if meta.get("final_report_path"):
         console.print(f"[bold green]Final Report:[/bold green] [underline]{meta.get('final_report_path')}[/underline]")
-    
+
     if meta.get("master_report"):
         summary = meta.get("master_report")[:800] + "..."
         console.print("\n[bold cyan]Report Preview:[/bold cyan]")
         console.print(Panel(summary, border_style="green"))
+
+
+@runs_app.command("report")
+def runs_report(run_id: str):
+    """Re-generate the HTML report, Mermaid graph, and Markdown report for a run."""
+    from margre.persistence.runs import read_run_metadata, get_runs_dir
+    import os
+
+    meta = read_run_metadata(run_id)
+    if not meta:
+        console.print(f"[bold red]Run ID '{run_id}' not found.[/bold red]")
+        raise typer.Exit(1)
+
+    run_path = get_runs_dir() / run_id
+    if not run_path.exists():
+        console.print(f"[bold red]Run directory not found: {run_path}[/bold red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold cyan]Re-generating reports for run:[/bold cyan] {run_id}")
+
+    # Re-generate Mermaid graph
+    try:
+        from margre.reporting.mermaid import save_mermaid
+        mermaid_path = save_mermaid(run_id)
+        console.print(f"  [green]Mermaid graph:[/green] {mermaid_path}")
+    except Exception as e:
+        console.print(f"  [red]Mermaid graph failed: {e}[/red]")
+
+    # Re-generate HTML report
+    try:
+        from margre.reporting.html import save_html_report
+        html_path = save_html_report(run_id)
+        console.print(f"  [green]HTML report:[/green] {html_path}")
+    except Exception as e:
+        console.print(f"  [red]HTML report failed: {e}[/red]")
+
+
+    console.print("[bold green]Done.[/bold green]")
 
 if __name__ == "__main__":
     app()

@@ -60,7 +60,7 @@ class TestGenerateHtmlReport:
         with patches[0], patches[1], patches[2]:
             html = generate_html_report("test_leonardo")
         assert 'class="mermaid"' in html
-        assert "graph LR" in html
+        assert "mindmap" in html
 
     def test_marked_js_referenced(self, mock_runs_dir):
         patches = _patches(mock_runs_dir)
@@ -112,8 +112,8 @@ class TestGenerateHtmlReport:
         assert "<title>MARGRe: Unknown Person</title>" in html
         assert "<h1>Unknown Person</h1>" in html
         assert "0 agents" in html
-        # No mermaid graph section (no relationships)
-        assert 'class="mermaid"' not in html
+        # Mindmap div is present (even for a single seed node)
+        assert 'class="mermaid"' in html
 
     def test_run_with_report_embeds_content(self, tmp_path):
         """A run with final_report.md should embed the content in the script tag."""
