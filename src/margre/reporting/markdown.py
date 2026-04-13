@@ -28,6 +28,24 @@ def generate_final_report(run_id: str, master_report: str, metadata: Dict[str, A
     report_file.write_text(full_content, encoding="utf-8")
     
     # Also update aggregation.json to track the report file path
-    save_run_metadata(run_id, {"final_report_path": str(report_file.absolute())})
-    
+    metadata_update = {"final_report_path": str(report_file.absolute())}
+
+    # Generate Mermaid flowchart alongside the report
+    from margre.reporting.mermaid import save_mermaid
+    try:
+        mermaid_path = save_mermaid(run_id)
+        metadata_update["graph_path"] = mermaid_path
+    except Exception as e:
+        logger.warning(f"REPORTING: Failed to generate Mermaid flowchart: {e}")
+
+    # Generate single-page HTML report
+    from margre.reporting.html import save_html_report
+    try:
+        html_path = save_html_report(run_id)
+        metadata_update["html_report_path"] = html_path
+    except Exception as e:
+        logger.warning(f"REPORTING: Failed to generate HTML report: {e}")
+
+    save_run_metadata(run_id, metadata_update)
+
     return str(report_file.absolute())
