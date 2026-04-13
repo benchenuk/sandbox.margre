@@ -76,6 +76,7 @@ uv run margre graph show "Leonardo da Vinci"
 ```bash
 uv run margre search "Machiavelli"     # Test web search
 uv run margre chat "Status check"      # Test LLM contact
+uv run margre runs report 14d4fbab.    # Generate report for a run
 ```
 
 ---

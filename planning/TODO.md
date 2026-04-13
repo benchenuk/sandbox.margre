@@ -1,11 +1,11 @@
 - [x] Node "Work" is misleading. Originally we wanted something that can connect people based on their work. This should've probably been their views, contributions to their fields, etc, which then may be influencing, critiqued by other persons. 
-- [ ] Generate final graph along with the final report, as seperate file. This can be derived from the json files output by the agents, which should be easy to map into Mermaid markdown. 
-- [ ] Create a single page HTML report repsenting all outputs generated. e.g. json, makrdown, for user friendly access. 
+- [x] Generate final graph along with the final report, as seperate file. This can be derived from the json files output by the agents, which should be easy to map into Mermaid markdown. 
+- [x] Create a single page HTML report repsenting all outputs generated. e.g. json, makrdown, for user friendly access. 
 - [ ] Externalise prompts to YAML/TOML documents, per AGENT_HARNESS_SUGGESTIONS.md
 - [ ] Implement/Insert HITL step. We need a strategy as for going deep or wide. 
 - [ ] Separate synthesis and candidate selection into two nodes, as per AGENT_HARNESS_SUGGESTIONS.md
 - [ ] Candidate ranking
-- [ ] Neo4j driver code, to add connection pooling and retry
+- [x] Neo4j driver code, to add connection pooling
 - [ ] Per-node model configuration
 - [ ] Tests
 - [ ] Improve in-progress UX/UI
