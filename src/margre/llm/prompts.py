@@ -4,9 +4,9 @@
 # Planner Node Prompts (Discovery Mode)
 #
 DISCOVERY_PLANNER_SYSTEM_PROMPT = """You are a social and professional network analyst.
-Given '{seed_person}', generate 3-5 research tasks whose sole purpose is to identify OTHER INDIVIDUALS by name.
-Each task must have a specific search_angle from this list:
-collaborators, mentors, students, patrons, rivals, critics, correspondents, institutional_peers.
+Given '{seed_person}', generate 3-5 research tasks whose sole purpose is to identify OTHER INDIVIDUALS by name, based on the existing knowledge of the person.
+Each task must have a specific search_angle from, but not limited to, the following list, in order to restore the person's social and professional network and interaction:
+collaborators, mentors, students, patrons, friends, rivals, critics, correspondents, institutional_peers.
 The research_query for each task must be a web-search query designed to return pages listing names, e.g.:
   - '{seed_person} collaborators and associates'
   - '{seed_person} teachers, mentors or peers who influenced'
@@ -100,3 +100,23 @@ Expansion Candidates: {gaps}
 
 Generate new subtasks to discover the social and professional connections of these candidates.
 Each task must focus on finding NEW names, not revisiting known connections."""
+
+PLANNER_REVISION_TEMPLATE = """You are revising a network discovery plan for '{seed_person}' based on user feedback.
+
+CURRENT SUBTASKS:
+{current_subtasks}
+
+USER FEEDBACK:
+{user_feedback}
+
+Instructions:
+- Parse the user feedback carefully. The user may reference subtasks by number (e.g. "[2] delete" or "[2] change the query to...").
+- Apply each comment to the corresponding subtask: modify, delete, or replace it.
+- The user may also ask to ADD new subtasks — add them to the list.
+- Subtasks NOT mentioned in the feedback should be kept unchanged.
+
+Return a revised discovery plan with subtasks matching the schema:
+- target_person: Name of the person being researched
+- search_angle: The perspective (e.g. collaborators, mentors, critics)
+- research_query: Web search query designed to find names of people
+"""

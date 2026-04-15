@@ -142,7 +142,9 @@ def discover(seed_person: str, approve: bool = False, verbose: bool = False, thr
             "loop_count": 0,
             "user_approved_plan": approve,
             "master_report": None,
-            "suggested_gaps": []
+            "suggested_gaps": [],
+            "plan_revision_count": 0,
+            "plan_revision_comments": None,
         }
         
         # Run until interrupt or completion
@@ -168,7 +170,12 @@ def resume(thread_id: str, approve: bool = False, verbose: bool = False):
         if not state or not state.values:
             console.print(f"[bold red]Thread '{thread_id}' not found in checkpoints![/bold red]")
             return
-            
+
+        # Ensure new state fields are initialized on resume
+        current_values = state.values
+        if "plan_revision_count" not in current_values:
+            graph.update_state(config, {"plan_revision_count": 0, "plan_revision_comments": None})
+
         # Resume from where we left off
         _run_workflow(graph, None, config, approve)
 
@@ -196,17 +203,31 @@ def _run_workflow(graph, initial_state, config, initial_approve):
             if "research_dispatch_node" in next_nodes:
                 plan = state_values.get("plan")
                 if plan:
-                    console.print(f"\n[bold green]Discovery Plan for {plan.seed_person} (Loop {state_values.get('loop_count')}):[/bold green]")
+                    revision_count = state_values.get("plan_revision_count", 0)
+                    if revision_count > 0:
+                        console.print(f"\n[bold green]Revised Discovery Plan for {plan.seed_person} (Revision {revision_count}):[/bold green]")
+                    else:
+                        console.print(f"\n[bold green]Discovery Plan for {plan.seed_person} (Loop {state_values.get('loop_count')}):[/bold green]")
                     for idx, task in enumerate(plan.subtasks, 1):
                         console.print(f"  {idx}. [bold cyan]{task.target_person}[/bold cyan] ({task.search_angle}): {task.research_query}")
-                    
+
                     if not initial_approve and not state_values.get("user_approved_plan"):
-                        if not typer.confirm("\nDo you approve these discovery subtasks?", default=True):
-                            console.print("[yellow]Plan rejected. You can resume later with 'margre resume'.[/yellow]")
-                            return
-                        # Update state with approval
-                        graph.update_state(config, {"user_approved_plan": True})
-                
+                        comment = typer.prompt(
+                            "\nEnter comments on the plan (or press Enter to approve):",
+                            default="",
+                            show_default=False,
+                        )
+                        if comment.strip():
+                            # User has feedback — save it and replan
+                            console.print(f"[dim]Revising plan with your feedback...[/dim]")
+                            graph.update_state(config, {
+                                "plan_revision_comments": comment.strip(),
+                                "user_approved_plan": False,
+                            })
+                        else:
+                            # Empty input = approve
+                            graph.update_state(config, {"user_approved_plan": True})
+
                 # Continue execution
                 current_state = None
                 continue

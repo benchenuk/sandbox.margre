@@ -51,6 +51,10 @@ class OrchestratorState(TypedDict):
     discovered_persons: Annotated[List[str], operator.add]
     loop_count: int
     user_approved_plan: bool
+
+    # HITL revision loop
+    plan_revision_count: int
+    plan_revision_comments: Optional[str]
     
     # Master results (High-level overview + expansion candidates)
     master_report: Optional[str]

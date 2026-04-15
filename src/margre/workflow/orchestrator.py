@@ -71,11 +71,16 @@ def route_after_planner(state: OrchestratorState) -> Literal["researcher_dispatc
     if state.get("user_approved_plan", False):
         logger.info("ORCHESTRATOR: Plan approved, proceeding to discovery.")
         return "researcher_dispatch"
-    
-    # HITL Interrupt point
+
+    # If there are revision comments, route back to planner to process them
+    if state.get("plan_revision_comments") is not None:
+        logger.info("ORCHESTRATOR: Revision comments pending, returning to planner.")
+        return "planner"
+
+    # HITL Interrupt point — show plan to user for approval
     if state.get("plan"):
         return "researcher_dispatch"
-    
+
     return "planner"
 
 def route_after_aggregation(state: OrchestratorState) -> Literal["expand", "end"]:

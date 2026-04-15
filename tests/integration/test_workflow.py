@@ -1,6 +1,8 @@
 import pytest
-from margre.workflow.orchestrator import app as graph_app
+from margre.workflow.orchestrator import create_graph
 from margre.workflow.state import OrchestratorState
+
+graph_app = create_graph()
 
 # Mock thread for local POC
 config = {"configurable": {"thread_id": "test_workflow_run"}}
@@ -14,12 +16,17 @@ async def test_workflow_end_to_end_basics(mock_config):
     query = "Research the main figures of the scientific revolution."
     
     initial_state = {
-        "query": query,
+        "seed_person": query,
         "messages": [],
         "plan": None,
         "agent_results": [],
-        "current_loop": 1,
-        "user_approved_plan": True # Set to True to skip HITL logic if needed for test
+        "discovered_persons": [],
+        "loop_count": 0,
+        "user_approved_plan": True,  # Set to True to skip HITL logic if needed for test
+        "plan_revision_count": 0,
+        "plan_revision_comments": None,
+        "master_report": None,
+        "suggested_gaps": [],
     }
     
     # We use a simple query to ensure the planner produces at least one task
@@ -50,10 +57,22 @@ async def test_planner_plan_structure(mock_config):
     """Specific test for the planner's output schema."""
     from margre.workflow.planner import planner_node
     
-    state = {"query": "Isaac Newton and the Principia", "messages": [], "plan": None}
+    state = {
+        "seed_person": "Isaac Newton",
+        "messages": [],
+        "plan": None,
+        "agent_results": [],
+        "discovered_persons": [],
+        "loop_count": 0,
+        "user_approved_plan": False,
+        "plan_revision_count": 0,
+        "plan_revision_comments": None,
+        "master_report": None,
+        "suggested_gaps": [],
+    }
     result = planner_node(state)
-    
+
     assert "plan" in result
     plan = result["plan"]
     assert plan.subtasks
-    assert any(sub.entity_name.lower().find("newton") != -1 for sub in plan.subtasks)
+    assert any(sub.target_person.lower().find("newton") != -1 for sub in plan.subtasks)
