@@ -13,7 +13,11 @@ class TestRouteAfterPlanner:
     def test_no_plan_yet_routes_to_planner(self):
         from margre.workflow.orchestrator import route_after_planner
 
-        state = {"plan": None, "user_approved_plan": False, "plan_revision_comments": None}
+        state = {
+            "plan": None,
+            "user_approved_plan": False,
+            "plan_revision_comments": None,
+        }
         result = route_after_planner(state)
         assert result == "planner"
 
@@ -21,7 +25,11 @@ class TestRouteAfterPlanner:
         from margre.workflow.orchestrator import route_after_planner
 
         mock_plan = MagicMock()
-        state = {"plan": mock_plan, "user_approved_plan": False, "plan_revision_comments": None}
+        state = {
+            "plan": mock_plan,
+            "user_approved_plan": False,
+            "plan_revision_comments": None,
+        }
         result = route_after_planner(state)
         assert result == "researcher_dispatch"
 
@@ -29,7 +37,11 @@ class TestRouteAfterPlanner:
         from margre.workflow.orchestrator import route_after_planner
 
         mock_plan = MagicMock()
-        state = {"plan": mock_plan, "user_approved_plan": True, "plan_revision_comments": None}
+        state = {
+            "plan": mock_plan,
+            "user_approved_plan": True,
+            "plan_revision_comments": None,
+        }
         result = route_after_planner(state)
         assert result == "researcher_dispatch"
 
@@ -51,7 +63,9 @@ class TestFallbackJsonNormalization:
 
     @patch("margre.workflow.planner.get_model")
     @patch("margre.workflow.planner.get_person_connections")
-    def test_normalizes_search_query_to_research_query(self, mock_connections, mock_get_model):
+    def test_normalizes_search_query_to_research_query(
+        self, mock_connections, mock_get_model
+    ):
         """Fallback parser should map search_query → research_query."""
         mock_connections.return_value = []
         mock_model = MagicMock()
@@ -61,18 +75,22 @@ class TestFallbackJsonNormalization:
         mock_structured.invoke.side_effect = Exception("structured output failed")
 
         # Fallback LLM returns JSON with 'search_query' instead of 'research_query'
-        fallback_json = json.dumps({
-            "seed_person": "Leonardo da Vinci",
-            "subtasks": [
-                {
-                    "target_person": "Leonardo da Vinci",
-                    "search_angle": "collaborators",
-                    "search_query": "Leonardo da Vinci collaborators",
-                }
-            ],
-        })
+        fallback_json = json.dumps(
+            {
+                "seed_person": "Leonardo da Vinci",
+                "subtasks": [
+                    {
+                        "target_person": "Leonardo da Vinci",
+                        "search_angle": "collaborators",
+                        "search_query": "Leonardo da Vinci collaborators",
+                    }
+                ],
+            }
+        )
         mock_model.with_structured_output.return_value = mock_structured
-        mock_model.invoke.return_value = MagicMock(content=f"```json\n{fallback_json}\n```")
+        mock_model.invoke.return_value = MagicMock(
+            content=f"```json\n{fallback_json}\n```"
+        )
         mock_get_model.return_value = mock_model
 
         state = {
@@ -83,7 +101,10 @@ class TestFallbackJsonNormalization:
         }
 
         result = planner_node(state)
-        assert result["plan"].subtasks[0].research_query == "Leonardo da Vinci collaborators"
+        assert (
+            result["plan"].subtasks[0].research_query
+            == "Leonardo da Vinci collaborators"
+        )
 
     @patch("margre.workflow.planner.get_model")
     @patch("margre.workflow.planner.get_person_connections")
@@ -95,18 +116,22 @@ class TestFallbackJsonNormalization:
         mock_structured = MagicMock()
         mock_structured.invoke.side_effect = Exception("structured output failed")
 
-        fallback_json = json.dumps({
-            "seed_person": "Leonardo da Vinci",
-            "subtasks": [
-                {
-                    "target_person": "Leonardo da Vinci",
-                    "angle": "collaborators",
-                    "research_query": "Leonardo da Vinci collaborators",
-                }
-            ],
-        })
+        fallback_json = json.dumps(
+            {
+                "seed_person": "Leonardo da Vinci",
+                "subtasks": [
+                    {
+                        "target_person": "Leonardo da Vinci",
+                        "angle": "collaborators",
+                        "research_query": "Leonardo da Vinci collaborators",
+                    }
+                ],
+            }
+        )
         mock_model.with_structured_output.return_value = mock_structured
-        mock_model.invoke.return_value = MagicMock(content=f"```json\n{fallback_json}\n```")
+        mock_model.invoke.return_value = MagicMock(
+            content=f"```json\n{fallback_json}\n```"
+        )
         mock_get_model.return_value = mock_model
 
         state = {
@@ -125,7 +150,9 @@ class TestPlannerNodeRevisionMode:
 
     @patch("margre.workflow.planner.get_model")
     @patch("margre.workflow.planner.get_person_connections")
-    def test_revision_mode_uses_structured_output(self, mock_connections, mock_get_model):
+    def test_revision_mode_uses_structured_output(
+        self, mock_connections, mock_get_model
+    ):
         """Revision mode uses structured output like normal planning mode."""
         mock_connections.return_value = []
         mock_model = MagicMock()
@@ -177,7 +204,9 @@ class TestPlannerNodeRevisionMode:
 
     @patch("margre.workflow.planner.get_model")
     @patch("margre.workflow.planner.get_person_connections")
-    def test_revision_count_increments_on_each_revision(self, mock_connections, mock_get_model):
+    def test_revision_count_increments_on_each_revision(
+        self, mock_connections, mock_get_model
+    ):
         """plan_revision_count increments each time comments are processed."""
         mock_connections.return_value = []
         mock_model = MagicMock()
@@ -290,3 +319,88 @@ class TestPlannerNodeRevisionMode:
         result = planner_node(state)
 
         assert result["plan_revision_comments"] is None
+
+
+class TestPlannerWithCandidateGaps:
+    """Tests for planner handling List[Candidate] in suggested_gaps."""
+
+    @patch("margre.workflow.planner.get_model")
+    @patch("margre.workflow.planner.get_person_connections")
+    def test_refinement_handles_candidate_objects_in_suggested_gaps(
+        self, mock_connections, mock_get_model
+    ):
+        """Planner should extract .name from Candidate objects when building refinement prompt."""
+        from margre.workflow.state import Candidate
+
+        mock_connections.return_value = []
+        mock_model = MagicMock()
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = DiscoveryPlan(
+            seed_person="Machiavelli",
+            subtasks=[
+                DiscoveryTask(
+                    target_person="Machiavelli",
+                    search_angle="collaborators",
+                    research_query="Machiavelli collaborators",
+                )
+            ],
+        )
+        mock_model.with_structured_output.return_value = mock_structured
+        mock_get_model.return_value = mock_model
+
+        state = {
+            "seed_person": "Leonardo da Vinci",
+            "loop_count": 1,
+            "plan": None,
+            "plan_revision_comments": None,
+            "plan_revision_count": 0,
+            "master_report": "Some report",
+            "suggested_gaps": [
+                Candidate(name="Machiavelli", score=8.0),
+                Candidate(name="Verrocchio", score=5.0),
+            ],
+        }
+
+        result = planner_node(state)
+
+        assert result["plan"].seed_person == "Machiavelli"
+        mock_structured.invoke.assert_called_once()
+
+    @patch("margre.workflow.planner.get_model")
+    @patch("margre.workflow.planner.get_person_connections")
+    def test_fallback_injects_seed_person_when_missing(
+        self, mock_connections, mock_get_model
+    ):
+        """Fallback parser should inject seed_person from state if LLM omits it."""
+        mock_connections.return_value = []
+        mock_model = MagicMock()
+
+        mock_structured = MagicMock()
+        mock_structured.invoke.side_effect = Exception("structured output failed")
+
+        fallback_json = json.dumps(
+            {
+                "subtasks": [
+                    {
+                        "target_person": "Leonardo da Vinci",
+                        "search_angle": "collaborators",
+                        "research_query": "Leonardo da Vinci collaborators",
+                    }
+                ]
+            }
+        )
+        mock_model.with_structured_output.return_value = mock_structured
+        mock_model.invoke.return_value = MagicMock(
+            content=f"```json\n{fallback_json}\n```"
+        )
+        mock_get_model.return_value = mock_model
+
+        state = {
+            "seed_person": "Leonardo da Vinci",
+            "loop_count": 0,
+            "plan_revision_comments": None,
+            "plan_revision_count": 0,
+        }
+
+        result = planner_node(state)
+        assert result["plan"].seed_person == "Leonardo da Vinci"

@@ -16,10 +16,10 @@ The research_query for each task must be a web-search query designed to return p
 PLANNER_FALLBACK_SYSTEM_PROMPT = """You are a social network analyst. Return ONLY a JSON object to discover WHO '{seed_person}' interacted with.
 Schema:
 {{
-  "seed_person": "...",
+  "seed_person": "{seed_person}",
   "subtasks": [
     {{
-      "target_person": "<same as seed>",
+      "target_person": "{seed_person}",
       "search_angle": "collaborators|mentors|rivals|patrons|correspondents",
       "research_query": "<web search to find names>"
     }}
@@ -99,7 +99,12 @@ Previous Findings: {master_summary}
 Expansion Candidates: {gaps}
 
 Generate new subtasks to discover the social and professional connections of these candidates.
-Each task must focus on finding NEW names, not revisiting known connections."""
+Each task must focus on finding NEW names, not revisiting known connections.
+
+Each subtask must have:
+- target_person: Name of the candidate person being researched
+- search_angle: The perspective (e.g. collaborators, mentors, rivals, patrons, critics)
+- research_query: A web search query designed to find names of people connected to the candidate"""
 
 PLANNER_REVISION_TEMPLATE = """You are revising a network discovery plan for '{seed_person}' based on user feedback.
 
